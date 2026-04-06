@@ -51,7 +51,10 @@
   /* ── Top bar ── */
   .topbar { background: var(--bg); border-bottom: 0.5px solid var(--border); padding: 0 1.5rem; height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .topbar-left { display: flex; align-items: center; gap: 16px; }
-  .topbar-title { font-size: 15px; font-weight: 500; white-space: nowrap; }
+  .topbar-title-wrap { display: flex; align-items: center; gap: 6px; }
+  .topbar-title { font-size: 18px; font-weight: 500; white-space: nowrap; }
+  .topbar-rename-btn { background: none; border: none; cursor: pointer; padding: 2px; color: var(--text3); display: flex; align-items: center; opacity: 0.6; }
+  .topbar-rename-btn:hover { opacity: 1; color: var(--text2); }
   .topbar-note { font-size: 12px; color: var(--text3); font-style: italic; }
   .toggle-wrap { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text2); cursor: pointer; user-select: none; white-space: nowrap; }
   .toggle { position: relative; width: 32px; height: 18px; flex-shrink: 0; }
@@ -137,7 +140,14 @@
 
 <div class="topbar">
   <div class="topbar-left">
-    <span class="topbar-title">Work Tracker</span>
+    <div class="topbar-title-wrap">
+      <span class="topbar-title" id="topbar-title-text">Work Tracker</span>
+      <button class="topbar-rename-btn" onclick="openRenameDialog()" title="Rename">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+          <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61zm1.414 1.06a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354l-1.086-1.086zM11.189 6.25 9.75 4.81 3.22 11.34a.25.25 0 0 0-.064.108l-.558 1.953 1.953-.558a.25.25 0 0 0 .108-.064L11.19 6.25z"/>
+        </svg>
+      </button>
+    </div>
     <span class="topbar-note">Standalone mode — data saved in this browser</span>
   </div>
   <div style="display:flex;align-items:center;gap:16px;">
@@ -184,7 +194,7 @@ const LANES = ['Active', 'Waiting On', 'Someday', 'Done'];
 const BADGE_KEY = { 'Active': 'Active', 'Waiting On': 'WaitingOn', 'Someday': 'Someday', 'Done': 'Done' };
 const OLD_DONE_DAYS = 7;
 
-let appState = { view: 'commitments', commitmentId: null, commitments: [], tasks: [] };
+let appState = { view: 'commitments', commitmentId: null, commitments: [], tasks: [], title: 'Work Tracker' };
 let modalState = null;
 let dragState = null;
 let didDrag = false;
@@ -193,15 +203,56 @@ let didDrag = false;
 
 function save() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ commitments: appState.commitments, tasks: appState.tasks }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ commitments: appState.commitments, tasks: appState.tasks, title: appState.title }));
   } catch(e) { console.warn('Could not save:', e); }
 }
 
 function load() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) { const d = JSON.parse(raw); appState.commitments = d.commitments || []; appState.tasks = d.tasks || []; }
-  } catch(e) { appState.commitments = []; appState.tasks = []; }
+    if (raw) { const d = JSON.parse(raw); appState.commitments = d.commitments || []; appState.tasks = d.tasks || []; appState.title = d.title || 'Work Tracker'; }
+  } catch(e) { appState.commitments = []; appState.tasks = []; appState.title = 'Work Tracker'; }
+}
+
+function renderTitle() {
+  const el = document.getElementById('topbar-title-text');
+  if (el) el.textContent = appState.title;
+  document.title = appState.title;
+}
+
+function openRenameDialog() {
+  const current = appState.title;
+  const el = document.getElementById('modal-container');
+  el.innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeRenameDialog()">
+    <div class="modal" id="rename-modal">
+      <h3>Rename</h3>
+      <div class="field"><label>Title</label><input id="rename-input" value="${esc(current)}" maxlength="80"></div>
+      <div class="modal-actions">
+        <button class="btn btn-sm" onclick="closeRenameDialog()">Cancel</button>
+        <button class="btn btn-sm btn-primary" onclick="saveRename()">Save</button>
+      </div>
+    </div>
+  </div>`;
+  const input = document.getElementById('rename-input');
+  input.focus();
+  input.select();
+  document.getElementById('rename-modal').addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.preventDefault(); closeRenameDialog(); }
+    if (e.key === 'Enter') { e.preventDefault(); saveRename(); }
+  });
+}
+
+function closeRenameDialog() {
+  document.getElementById('modal-container').innerHTML = '';
+}
+
+function saveRename() {
+  const val = document.getElementById('rename-input').value.trim();
+  if (!val) return;
+  appState.title = val;
+  renderTitle();
+  save();
+  closeRenameDialog();
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -591,8 +642,10 @@ function debugUpload(input) {
       if (!Array.isArray(data.commitments) || !Array.isArray(data.tasks)) throw new Error('Invalid structure');
       appState.commitments = data.commitments;
       appState.tasks = data.tasks;
+      if (data.title) appState.title = data.title;
       normalizeSortOrders();
       save();
+      renderTitle();
       renderApp();
       input.value = '';
     } catch(err) {
@@ -613,6 +666,7 @@ function toggleDark(on) {
 load();
 normalizeSortOrders();
 save();
+renderTitle();
 
 // Restore dark mode preference before first render
 try {
