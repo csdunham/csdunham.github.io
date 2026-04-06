@@ -15,11 +15,38 @@
     --text3: #999;
     --border: rgba(0,0,0,0.12);
     --border2: rgba(0,0,0,0.2);
-    --blue: #185FA5;
+    --blue: #4a9ede;
     --radius: 8px;
     --radius-lg: 12px;
+    --modal-overlay: rgba(0,0,0,0.35);
+    --btn-hover-bg: #d0d0ce;
+    --btn-hover-color: #1a1a1a;
+    --btn-primary-hover-bg: #404040;
+    --lane-active: #0F6E56;
+    --lane-waiting: #854F0B;
+    --lane-someday: #3C3489;
+    --lane-done: #5F5E5A;
   }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg2); color: var(--text); min-height: 100vh; }
+  [data-dark] {
+    --bg: #1e1e1e;
+    --bg2: #141414;
+    --bg3: #2a2a2a;
+    --text: #e8e8e8;
+    --text2: #9a9a9a;
+    --text3: #666;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.16);
+    --blue: #4a9ede;
+    --modal-overlay: rgba(0,0,0,0.6);
+    --btn-hover-bg: #555;
+    --btn-hover-color: #e8e8e8;
+    --btn-primary-hover-bg: #bbb;
+    --lane-active: #2DC898;
+    --lane-waiting: #F0A030;
+    --lane-someday: #9B8FEE;
+    --lane-done: #9A9A9A;
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg2); color: var(--text); min-height: 100vh; transition: background 0.2s, color 0.2s; }
 
   /* ── Top bar ── */
   .topbar { background: var(--bg); border-bottom: 0.5px solid var(--border); padding: 0 1.5rem; height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -30,16 +57,16 @@
   .toggle { position: relative; width: 32px; height: 18px; flex-shrink: 0; }
   .toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
   .toggle-track { position: absolute; inset: 0; background: var(--border2); border-radius: 9px; transition: background 0.2s; }
-  .toggle input:checked + .toggle-track { background: #1a1a1a; }
+  .toggle input:checked + .toggle-track { background: var(--blue); }
   .toggle-thumb { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; background: white; border-radius: 50%; transition: transform 0.2s; pointer-events: none; }
   .toggle input:checked ~ .toggle-thumb { transform: translateX(14px); }
   .main { padding: 1.5rem; max-width: 1200px; margin: 0 auto; }
 
   /* ── Buttons ── */
   .btn { background: transparent; border: 0.5px solid var(--border2); border-radius: var(--radius); padding: 6px 12px; font-size: 13px; cursor: pointer; color: var(--text); display: inline-flex; align-items: center; gap: 6px; }
-  .btn:hover { background: var(--bg3); }
+  .btn:hover { background: var(--btn-hover-bg); color: var(--btn-hover-color); }
   .btn-primary { background: var(--text); color: var(--bg); border-color: transparent; }
-  .btn-primary:hover { background: #333; }
+  .btn-primary:hover { background: var(--btn-primary-hover-bg); color: var(--bg); opacity: 1; }
   .btn-sm { padding: 4px 8px; font-size: 12px; }
   .btn-danger { color: #A32D2D; border-color: #F09595; background: transparent; }
   .btn-danger:hover { background: #FCEBEB; }
@@ -62,18 +89,20 @@
   .lane-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
   .lane-title { font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
   .lane-count { font-size: 11px; color: var(--text3); }
-  .lane[data-lane="Active"] .lane-title { color: #0F6E56; }
-  .lane[data-lane="Waiting On"] .lane-title { color: #854F0B; }
-  .lane[data-lane="Someday"] .lane-title { color: #3C3489; }
-  .lane[data-lane="Done"] .lane-title { color: #5F5E5A; }
+  .lane[data-lane="Active"] .lane-title { color: var(--lane-active); }
+  .lane[data-lane="Waiting On"] .lane-title { color: var(--lane-waiting); }
+  .lane[data-lane="Someday"] .lane-title { color: var(--lane-someday); }
+  .lane[data-lane="Done"] .lane-title { color: var(--lane-done); }
   .cards-area { min-height: 40px; }
-  .card { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 6px; user-select: none; transition: opacity 0.15s; position: relative; }
-  .card[draggable="true"] { cursor: grab; }
-  .card[draggable="true"]:active { cursor: grabbing; }
+  .card { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 10px 12px 10px 12px; margin-bottom: 6px; user-select: none; transition: opacity 0.15s; position: relative; cursor: pointer; display: flex; align-items: flex-start; gap: 8px; }
   .card.dragging { opacity: 0.4; }
   .card.drag-insert-above { border-top: 2px solid #378ADD; }
   .card.drag-insert-below { border-bottom: 2px solid #378ADD; }
   .card:hover { border-color: var(--border2); }
+  .card-body { flex: 1; min-width: 0; }
+  .drag-handle { flex-shrink: 0; display: flex; align-items: center; padding: 2px 0 2px 4px; cursor: grab; color: var(--text3); opacity: 0.5; align-self: center; }
+  .drag-handle:hover { opacity: 1; color: var(--text2); }
+  .drag-handle:active { cursor: grabbing; }
   .card-title { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
   .card-meta { font-size: 11px; color: var(--text2); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .badge { display: inline-block; padding: 2px 7px; border-radius: 20px; font-size: 10px; font-weight: 500; }
@@ -86,7 +115,7 @@
   .empty { font-size: 12px; color: var(--text3); text-align: center; padding: 16px 0; }
 
   /* ── Modal ── */
-  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display: flex; align-items: flex-start; justify-content: center; padding-top: 80px; z-index: 100; }
+  .modal-bg { position: fixed; inset: 0; background: var(--modal-overlay); display: flex; align-items: flex-start; justify-content: center; padding-top: 80px; z-index: 100; }
   .modal { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 1.25rem; width: 100%; max-width: 420px; }
   .modal h3 { font-size: 16px; font-weight: 500; margin-bottom: 1rem; }
   .field { margin-bottom: 12px; }
@@ -95,6 +124,10 @@
   .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(24,95,165,0.1); }
   .field textarea { resize: vertical; min-height: 60px; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 1rem; }
+
+  /* ── Today mode ── */
+  .today-banner { font-size: 12px; color: var(--text3); margin-bottom: 1rem; font-style: italic; }
+  .today-kanban { display: grid; grid-template-columns: minmax(0, 480px); gap: 10px; }
 
   @media (max-width: 640px) { .kanban { grid-template-columns: 1fr 1fr; } }
   @media (max-width: 400px) { .kanban { grid-template-columns: 1fr; } }
@@ -107,19 +140,43 @@
     <span class="topbar-title">Work Tracker</span>
     <span class="topbar-note">Standalone mode — data saved in this browser</span>
   </div>
-  <label class="toggle-wrap">
-    <span>Hide old done items</span>
-    <span class="toggle">
-      <input type="checkbox" id="hide-old-toggle" onchange="renderApp()">
-      <span class="toggle-track"></span>
-      <span class="toggle-thumb"></span>
-    </span>
-  </label>
+  <div style="display:flex;align-items:center;gap:16px;">
+    <label class="toggle-wrap">
+      <span>Today</span>
+      <span class="toggle">
+        <input type="checkbox" id="today-toggle" onchange="renderApp()">
+        <span class="toggle-track"></span>
+        <span class="toggle-thumb"></span>
+      </span>
+    </label>
+    <label class="toggle-wrap">
+      <span>Dark mode</span>
+      <span class="toggle">
+        <input type="checkbox" id="dark-mode-toggle" onchange="toggleDark(this.checked)">
+        <span class="toggle-track"></span>
+        <span class="toggle-thumb"></span>
+      </span>
+    </label>
+    <label class="toggle-wrap">
+      <span>Hide old done items</span>
+      <span class="toggle">
+        <input type="checkbox" id="hide-old-toggle" onchange="renderApp()">
+        <span class="toggle-track"></span>
+        <span class="toggle-thumb"></span>
+      </span>
+    </label>
+  </div>
 </div>
 <div class="main">
   <div id="kanban-root"></div>
 </div>
 <div id="modal-container"></div>
+<div id="debug-bar" style="display:none;position:fixed;bottom:0;left:0;right:0;background:var(--bg);border-top:0.5px solid var(--border);padding:8px 1.5rem;display:none;align-items:center;gap:12px;z-index:50;">
+  <span style="font-size:11px;color:var(--text3);font-family:monospace;">debug</span>
+  <button class="btn btn-sm" onclick="debugDownload()">Download JSON</button>
+  <button class="btn btn-sm" onclick="document.getElementById('debug-upload-input').click()">Upload JSON</button>
+  <input type="file" id="debug-upload-input" accept=".json,application/json" style="display:none" onchange="debugUpload(this)">
+</div>
 
 <script>
 const STORAGE_KEY = 'work_tracker_data';
@@ -161,6 +218,7 @@ function isOldDone(item) {
 }
 
 function hideOldEnabled() { return document.getElementById('hide-old-toggle')?.checked; }
+function todayEnabled() { return document.getElementById('today-toggle')?.checked; }
 function shouldShow(item) { return !hideOldEnabled() || !isOldDone(item); }
 
 function laneItems(items, lane) {
@@ -199,7 +257,22 @@ function normalizeSortOrders() {
 
 // ── Render ────────────────────────────────────────────────────────────────────
 
+const TODAY_LIMIT = 3;
+
 function renderKanban(items, cardFn) {
+  if (todayEnabled()) {
+    const activeItems = laneItems(items, 'Active');
+    const top = activeItems.slice(0, TODAY_LIMIT);
+    const remaining = activeItems.length - top.length;
+    const cards = top.map(i => cardFn(i)).join('') || '<div class="empty">—</div>';
+    const moreNote = remaining > 0 ? `<div class="empty" style="font-style:italic">+${remaining} more item${remaining>1?'s':''}</div>` : '';
+    return `<div class="today-kanban">
+      <div class="lane" data-lane="Active">
+        <div class="lane-header"><span class="lane-title">Active</span><span class="lane-count">${activeItems.length}</span></div>
+        <div class="cards-area" data-lane="Active">${cards}${moreNote}</div>
+      </div>
+    </div>`;
+  }
   return `<div class="kanban">${LANES.map(lane => {
     const its = laneItems(items, lane);
     const visible = its.filter(shouldShow);
@@ -216,19 +289,31 @@ function renderKanban(items, cardFn) {
   }).join('')}</div>`;
 }
 
+const DRAG_HANDLE_SVG = `<svg width="12" height="16" viewBox="0 0 12 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="3.5" cy="3" r="1.5"/><circle cx="8.5" cy="3" r="1.5"/>
+  <circle cx="3.5" cy="8" r="1.5"/><circle cx="8.5" cy="8" r="1.5"/>
+  <circle cx="3.5" cy="13" r="1.5"/><circle cx="8.5" cy="13" r="1.5"/>
+</svg>`;
+
 function commitmentCard(c) {
   const dateStr = c.completedDate ? `<span class="completed-date">Done ${formatDate(c.completedDate)}</span>` : '';
   return `<div class="card" draggable="true" data-id="${c.id}" data-type="commitment">
-    <div class="card-title">${esc(c.title)}</div>
-    <div class="card-meta">${badgeHTML(c.lane)}<span class="task-count">${commitmentProgress(c.id)}</span>${dateStr}</div>
+    <div class="card-body">
+      <div class="card-title">${esc(c.title)}</div>
+      <div class="card-meta">${badgeHTML(c.lane)}<span class="task-count">${commitmentProgress(c.id)}</span>${dateStr}</div>
+    </div>
+    <div class="drag-handle" title="Drag to reorder">${DRAG_HANDLE_SVG}</div>
   </div>`;
 }
 
 function taskCard(t) {
   const dateStr = t.completedDate ? `<span class="completed-date">Done ${formatDate(t.completedDate)}</span>` : '';
   return `<div class="card" draggable="true" data-id="${t.id}" data-type="task">
-    <div class="card-title">${esc(t.title)}</div>
-    <div class="card-meta">${badgeHTML(t.lane)}${dateStr}</div>
+    <div class="card-body">
+      <div class="card-title">${esc(t.title)}</div>
+      <div class="card-meta">${badgeHTML(t.lane)}${dateStr}</div>
+    </div>
+    <div class="drag-handle" title="Drag to reorder">${DRAG_HANDLE_SVG}</div>
   </div>`;
 }
 
@@ -362,25 +447,41 @@ function goHome() { appState.view='commitments'; appState.commitmentId=null; ren
 
 // ── Drag & Drop ───────────────────────────────────────────────────────────────
 
+let dragFromHandle = false;
+
 function clearInsertIndicators() {
   document.querySelectorAll('.card').forEach(c => c.classList.remove('drag-insert-above','drag-insert-below'));
 }
 
+function clearDragState() {
+  document.querySelectorAll('.card.dragging').forEach(c => c.classList.remove('dragging'));
+  document.querySelectorAll('.lane').forEach(l => l.classList.remove('drag-over'));
+  clearInsertIndicators();
+  dragState = null;
+  dragFromHandle = false;
+  didDrag = false;
+}
+
+document.addEventListener('dragend', () => { clearDragState(); });
+
 function setupDrag() {
   document.querySelectorAll('.card[draggable]').forEach(card => {
+    // Only allow drag to start when initiated from the handle
+    const handle = card.querySelector('.drag-handle');
+    if (handle) {
+      handle.addEventListener('mousedown', () => { dragFromHandle = true; });
+    }
+
     card.addEventListener('dragstart', e => {
+      if (!dragFromHandle) { e.preventDefault(); return; }
       didDrag = false;
       dragState = { id: card.dataset.id, type: card.dataset.type };
       setTimeout(() => card.classList.add('dragging'), 0);
       e.dataTransfer.effectAllowed = 'move';
+      dragFromHandle = false;
     });
 
-    card.addEventListener('dragend', () => {
-      card.classList.remove('dragging');
-      clearInsertIndicators();
-      document.querySelectorAll('.lane').forEach(l => l.classList.remove('drag-over'));
-      dragState = null;
-    });
+    card.addEventListener('dragend', () => { clearDragState(); });
 
     card.addEventListener('dragover', e => {
       e.preventDefault(); e.stopPropagation();
@@ -393,14 +494,14 @@ function setupDrag() {
 
     card.addEventListener('drop', e => {
       e.preventDefault(); e.stopPropagation();
-      if (!dragState || dragState.id === card.dataset.id) { clearInsertIndicators(); return; }
+      if (!dragState || dragState.id === card.dataset.id) { clearDragState(); return; }
       didDrag = true;
       const insertAbove = card.classList.contains('drag-insert-above');
-      clearInsertIndicators();
-      document.querySelectorAll('.lane').forEach(l => l.classList.remove('drag-over'));
+      const savedDragState = { ...dragState };
+      clearDragState();
 
-      const collection = dragState.type==='commitment' ? appState.commitments : appState.tasks;
-      const dragged = collection.find(x => x.id===dragState.id);
+      const collection = savedDragState.type==='commitment' ? appState.commitments : appState.tasks;
+      const dragged = collection.find(x => x.id===savedDragState.id);
       const target = collection.find(x => x.id===card.dataset.id);
       if (!dragged || !target) return;
 
@@ -424,8 +525,10 @@ function setupDrag() {
       save(); renderApp();
     });
 
-    card.addEventListener('click', () => {
+    card.addEventListener('click', e => {
       if (didDrag) return;
+      // Clicks on the handle don't navigate/open
+      if (e.target.closest('.drag-handle')) return;
       if (card.dataset.type==='commitment') { appState.view='tasks'; appState.commitmentId=card.dataset.id; renderApp(); }
       else openModal('task', card.dataset.id);
     });
@@ -443,15 +546,16 @@ function setupDrag() {
     });
     area.addEventListener('drop', e => {
       e.preventDefault();
-      lane.classList.remove('drag-over');
-      clearInsertIndicators();
       if (!dragState) return;
       if (e.target !== area && e.target.closest && e.target.closest('.card')) return;
       didDrag = true;
 
       const newLane = area.dataset.lane;
-      const collection = dragState.type==='commitment' ? appState.commitments : appState.tasks;
-      const item = collection.find(x => x.id===dragState.id);
+      const savedDragState = { ...dragState };
+      clearDragState();
+
+      const collection = savedDragState.type==='commitment' ? appState.commitments : appState.tasks;
+      const item = collection.find(x => x.id===savedDragState.id);
       if (!item) return;
       if (item.lane !== newLane) {
         if (newLane==='Done') item.completedDate = today();
@@ -465,11 +569,65 @@ function setupDrag() {
   });
 }
 
+// ── Debug mode ────────────────────────────────────────────────────────────────
+
+function debugDownload() {
+  const raw = localStorage.getItem(STORAGE_KEY) || '{"commitments":[],"tasks":[]}';
+  const blob = new Blob([JSON.stringify(JSON.parse(raw), null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `work-tracker-${today()}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function debugUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!Array.isArray(data.commitments) || !Array.isArray(data.tasks)) throw new Error('Invalid structure');
+      appState.commitments = data.commitments;
+      appState.tasks = data.tasks;
+      normalizeSortOrders();
+      save();
+      renderApp();
+      input.value = '';
+    } catch(err) {
+      alert('Upload failed: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
+
+function toggleDark(on) {
+  if (on) document.documentElement.setAttribute('data-dark', '');
+  else document.documentElement.removeAttribute('data-dark');
+  try { localStorage.setItem('wt_dark', on ? '1' : '0'); } catch(e) {}
+}
 
 load();
 normalizeSortOrders();
 save();
+
+// Restore dark mode preference before first render
+try {
+  if (localStorage.getItem('wt_dark') === '1') {
+    document.documentElement.setAttribute('data-dark', '');
+    document.getElementById('dark-mode-toggle').checked = true;
+  }
+} catch(e) {}
+
+// Show debug bar if ?debug=1 in URL
+if (new URLSearchParams(window.location.search).get('debug') === '1') {
+  document.getElementById('debug-bar').style.display = 'flex';
+  document.querySelector('.main').style.paddingBottom = '3rem';
+}
+
 renderApp();
 </script>
 </body>
