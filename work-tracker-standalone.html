@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Work Tracker</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #ffffff;
+    --bg2: #f5f5f3;
+    --bg3: #ededea;
+    --text: #1a1a1a;
+    --text2: #6b6b6b;
+    --text3: #999;
+    --border: rgba(0,0,0,0.12);
+    --border2: rgba(0,0,0,0.2);
+    --blue: #185FA5;
+    --radius: 8px;
+    --radius-lg: 12px;
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg2); color: var(--text); min-height: 100vh; }
+
+  /* ── Top bar ── */
+  .topbar { background: var(--bg); border-bottom: 0.5px solid var(--border); padding: 0 1.5rem; height: 52px; display: flex; align-items: center; justify-content: space-between; }
+  .topbar-title { font-size: 15px; font-weight: 500; }
+  .topbar-note { font-size: 12px; color: var(--text3); font-style: italic; }
+  .main { padding: 1.5rem; max-width: 1200px; margin: 0 auto; }
+
+  /* ── Buttons ── */
+  .btn { background: transparent; border: 0.5px solid var(--border2); border-radius: var(--radius); padding: 6px 12px; font-size: 13px; cursor: pointer; color: var(--text); display: inline-flex; align-items: center; gap: 6px; }
+  .btn:hover { background: var(--bg2); }
+  .btn-primary { background: var(--text); color: var(--bg); border-color: transparent; }
+  .btn-primary:hover { opacity: 0.85; }
+  .btn-sm { padding: 4px 8px; font-size: 12px; }
+  .btn-danger { color: #A32D2D; border-color: #F09595; }
+
+  /* ── Kanban ── */
+  .view-header { display: flex; align-items: center; gap: 12px; margin-bottom: 1.25rem; flex-wrap: wrap; }
+  .view-header h2 { font-size: 18px; font-weight: 500; }
+  .breadcrumb { font-size: 16px; display: flex; align-items: center; gap: 6px; }
+  .breadcrumb-link { cursor: pointer; color: var(--blue); }
+  .breadcrumb-link:hover { text-decoration: underline; }
+  .breadcrumb-sep { color: var(--text3); }
+  .breadcrumb-current { color: var(--text); font-weight: 500; cursor: default; }
+  .commitment-detail { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; margin-bottom: 1.25rem; }
+  .commitment-detail-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .commitment-detail-title { font-size: 16px; font-weight: 500; margin-bottom: 4px; }
+  .commitment-detail-notes { font-size: 13px; color: var(--text2); margin-bottom: 8px; }
+  .kanban { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; align-items: start; }
+  .lane { background: var(--bg3); border-radius: var(--radius-lg); padding: 10px; transition: background 0.15s; }
+  .lane.drag-over { background: #E6F1FB; outline: 1.5px dashed #378ADD; }
+  .lane-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .lane-title { font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
+  .lane-count { font-size: 11px; color: var(--text3); }
+  .lane[data-lane="Active"] .lane-title { color: #0F6E56; }
+  .lane[data-lane="Waiting On"] .lane-title { color: #854F0B; }
+  .lane[data-lane="Someday"] .lane-title { color: #3C3489; }
+  .lane[data-lane="Done"] .lane-title { color: #5F5E5A; }
+  .cards-area { min-height: 40px; }
+  .card { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 6px; user-select: none; transition: opacity 0.15s; }
+  .card[draggable="true"] { cursor: grab; }
+  .card[draggable="true"]:active { cursor: grabbing; }
+  .card.dragging { opacity: 0.4; }
+  .card:hover { border-color: var(--border2); }
+  .card-title { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+  .card-meta { font-size: 11px; color: var(--text2); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .badge { display: inline-block; padding: 2px 7px; border-radius: 20px; font-size: 10px; font-weight: 500; }
+  .badge-Active { background: #E1F5EE; color: #0F6E56; }
+  .badge-WaitingOn { background: #FAEEDA; color: #854F0B; }
+  .badge-Someday { background: #EEEDFE; color: #3C3489; }
+  .badge-Done { background: #F1EFE8; color: #5F5E5A; }
+  .task-count { font-size: 11px; color: var(--text3); }
+  .empty { font-size: 12px; color: var(--text3); text-align: center; padding: 16px 0; }
+
+  /* ── Modal ── */
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display: flex; align-items: flex-start; justify-content: center; padding-top: 80px; z-index: 100; }
+  .modal { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 1.25rem; width: 100%; max-width: 420px; }
+  .modal h3 { font-size: 16px; font-weight: 500; margin-bottom: 1rem; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+  .field input, .field select, .field textarea { width: 100%; font-size: 13px; padding: 7px 10px; border: 0.5px solid var(--border2); border-radius: var(--radius); background: var(--bg); color: var(--text); font-family: inherit; }
+  .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(24,95,165,0.1); }
+  .field textarea { resize: vertical; min-height: 60px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 1rem; }
+
+  @media (max-width: 640px) { .kanban { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 400px) { .kanban { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="topbar-title">Work Tracker</span>
+  <span class="topbar-note">Standalone mode — data saved in this browser</span>
+</div>
+<div class="main">
+  <div id="kanban-root"></div>
+</div>
+<div id="modal-container"></div>
+
+<script>
+const STORAGE_KEY = 'work_tracker_data';
+const LANES = ['Active', 'Waiting On', 'Someday', 'Done'];
+const BADGE_KEY = { 'Active': 'Active', 'Waiting On': 'WaitingOn', 'Someday': 'Someday', 'Done': 'Done' };
+
+let appState = {
+  view: 'commitments',
+  commitmentId: null,
+  commitments: [],
+  tasks: []
+};
+let modalState = null;
+let dragState = null;
+let didDrag = false;
+
+// ── Persistence ───────────────────────────────────────────────────────────────
+
+function save() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      commitments: appState.commitments,
+      tasks: appState.tasks
+    }));
+  } catch(e) {
+    console.warn('Could not save to localStorage:', e);
+  }
+}
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const data = JSON.parse(raw);
+      appState.commitments = data.commitments || [];
+      appState.tasks = data.tasks || [];
+    }
+  } catch(e) {
+    appState.commitments = [];
+    appState.tasks = [];
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function uid() { return 'id' + Math.random().toString(36).slice(2); }
+function esc(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function badgeHTML(lane) { return `<span class="badge badge-${BADGE_KEY[lane] || 'Done'}">${lane}</span>`; }
+function tasksFor(cid) { return appState.tasks.filter(t => t.commitmentId === cid); }
+function laneItems(items, lane) { return items.filter(i => i.lane === lane); }
+function commitmentProgress(cid) {
+  const ts = tasksFor(cid);
+  if (!ts.length) return 'no tasks';
+  return `${ts.filter(t => t.lane === 'Done').length}/${ts.length} done`;
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+
+function renderKanban(items, cardFn) {
+  return `<div class="kanban">${LANES.map(lane => {
+    const its = laneItems(items, lane);
+    const cards = its.map(i => cardFn(i)).join('');
+    return `<div class="lane" data-lane="${lane}">
+      <div class="lane-header">
+        <span class="lane-title">${lane}</span>
+        <span class="lane-count">${its.length}</span>
+      </div>
+      <div class="cards-area" data-lane="${lane}">
+        ${cards || '<div class="empty">—</div>'}
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function commitmentCard(c) {
+  return `<div class="card" draggable="true" data-id="${c.id}" data-type="commitment">
+    <div class="card-title">${esc(c.title)}</div>
+    <div class="card-meta">${badgeHTML(c.lane)}<span class="task-count">${commitmentProgress(c.id)}</span></div>
+  </div>`;
+}
+
+function taskCard(t) {
+  return `<div class="card" draggable="true" data-id="${t.id}" data-type="task">
+    <div class="card-title">${esc(t.title)}</div>
+    <div class="card-meta">${badgeHTML(t.lane)}</div>
+  </div>`;
+}
+
+function renderApp() {
+  let content = '';
+
+  if (appState.view === 'tasks') {
+    const c = appState.commitments.find(x => x.id === appState.commitmentId);
+    if (!c) { appState.view = 'commitments'; renderApp(); return; }
+    content = `
+      <div class="view-header">
+        <div class="breadcrumb">
+          <span class="breadcrumb-link" onclick="goHome()">Commitments</span>
+          <span class="breadcrumb-sep">›</span>
+          <span class="breadcrumb-current">${esc(c.title)}</span>
+        </div>
+        <button class="btn btn-sm btn-primary" onclick="openModal('task', null)">+ New task</button>
+      </div>
+      <div class="commitment-detail">
+        <div class="commitment-detail-top">
+          <div>
+            <div class="commitment-detail-title">${esc(c.title)}</div>
+            ${c.notes ? `<div class="commitment-detail-notes">${esc(c.notes)}</div>` : ''}
+            ${badgeHTML(c.lane)}
+          </div>
+          <button class="btn btn-sm" onclick="openModal('commitment', '${c.id}')">Edit</button>
+        </div>
+      </div>
+      ${renderKanban(tasksFor(c.id), taskCard)}`;
+  } else {
+    content = `
+      <div class="view-header">
+        <h2>Commitments</h2>
+        <button class="btn btn-sm btn-primary" onclick="openModal('commitment', null)">+ New commitment</button>
+      </div>
+      ${renderKanban(appState.commitments, commitmentCard)}`;
+  }
+
+  document.getElementById('kanban-root').innerHTML = content;
+  setupDrag();
+  renderModal();
+}
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+
+function openModal(type, editId) {
+  modalState = { type, editId };
+  renderModal();
+}
+
+function closeModal() {
+  modalState = null;
+  renderModal();
+}
+
+function renderModal() {
+  const el = document.getElementById('modal-container');
+  if (!modalState) { el.innerHTML = ''; return; }
+
+  const { type, editId } = modalState;
+  const isTask = type === 'task';
+  const item = editId
+    ? (isTask ? appState.tasks.find(t => t.id === editId) : appState.commitments.find(c => c.id === editId))
+    : null;
+
+  const title = item
+    ? (isTask ? 'Edit task' : 'Edit commitment')
+    : (isTask ? 'New task' : 'New commitment');
+
+  const laneOpts = LANES.map(l =>
+    `<option value="${l}"${item && item.lane === l ? ' selected' : ''}>${l}</option>`
+  ).join('');
+
+  const commitmentOpts = appState.commitments.map(c =>
+    `<option value="${c.id}"${
+      (item && item.commitmentId === c.id) || (appState.commitmentId === c.id && !item) ? ' selected' : ''
+    }>${esc(c.title)}</option>`
+  ).join('');
+
+  const noteField = !isTask
+    ? `<div class="field"><label>Notes</label><textarea id="f-notes">${esc(item && item.notes || '')}</textarea></div>`
+    : '';
+
+  const commitmentField = isTask
+    ? `<div class="field"><label>Commitment</label><select id="f-commitment">${commitmentOpts}</select></div>`
+    : '';
+
+  const deleteBtn = item
+    ? `<button class="btn btn-sm btn-danger" onclick="deleteItem('${editId}','${type}')">Delete</button>`
+    : '';
+
+  el.innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeModal()">
+    <div class="modal">
+      <h3>${title}</h3>
+      <div class="field"><label>Title</label><input id="f-title" value="${esc(item && item.title || '')}"></div>
+      ${commitmentField}
+      ${noteField}
+      <div class="field"><label>Status</label><select id="f-lane">${laneOpts}</select></div>
+      <div class="modal-actions">
+        ${deleteBtn}
+        <button class="btn btn-sm" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-sm btn-primary" onclick="saveItem('${type}','${editId || ''}')">Save</button>
+      </div>
+    </div>
+  </div>`;
+
+  document.getElementById('f-title').focus();
+}
+
+function saveItem(type, editId) {
+  const title = document.getElementById('f-title').value.trim();
+  if (!title) return;
+  const lane = document.getElementById('f-lane').value;
+
+  if (type === 'commitment') {
+    const notes = document.getElementById('f-notes').value.trim();
+    if (editId) {
+      const c = appState.commitments.find(x => x.id === editId);
+      if (c) { c.title = title; c.lane = lane; c.notes = notes; }
+    } else {
+      appState.commitments.push({ id: uid(), title, lane, notes });
+    }
+  } else {
+    const commitmentId = document.getElementById('f-commitment').value;
+    if (editId) {
+      const t = appState.tasks.find(x => x.id === editId);
+      if (t) { t.title = title; t.lane = lane; t.commitmentId = commitmentId; }
+    } else {
+      appState.tasks.push({ id: uid(), commitmentId, title, lane });
+    }
+  }
+
+  save();
+  closeModal();
+  renderApp();
+}
+
+function deleteItem(id, type) {
+  if (type === 'commitment') {
+    appState.commitments = appState.commitments.filter(c => c.id !== id);
+    appState.tasks = appState.tasks.filter(t => t.commitmentId !== id);
+    appState.view = 'commitments';
+    appState.commitmentId = null;
+  } else {
+    appState.tasks = appState.tasks.filter(t => t.id !== id);
+  }
+  save();
+  closeModal();
+  renderApp();
+}
+
+function goHome() {
+  appState.view = 'commitments';
+  appState.commitmentId = null;
+  renderApp();
+}
+
+// ── Drag & Drop ───────────────────────────────────────────────────────────────
+
+function setupDrag() {
+  document.querySelectorAll('.card[draggable]').forEach(card => {
+    card.addEventListener('dragstart', e => {
+      didDrag = false;
+      dragState = { id: card.dataset.id, type: card.dataset.type };
+      setTimeout(() => card.classList.add('dragging'), 0);
+      e.dataTransfer.effectAllowed = 'move';
+    });
+
+    card.addEventListener('dragend', () => {
+      card.classList.remove('dragging');
+      document.querySelectorAll('.lane').forEach(l => l.classList.remove('drag-over'));
+      dragState = null;
+    });
+
+    card.addEventListener('click', () => {
+      if (didDrag) return;
+      if (card.dataset.type === 'commitment') {
+        appState.view = 'tasks';
+        appState.commitmentId = card.dataset.id;
+        renderApp();
+      } else {
+        openModal('task', card.dataset.id);
+      }
+    });
+  });
+
+  document.querySelectorAll('.cards-area').forEach(area => {
+    const lane = area.closest('.lane');
+
+    area.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      document.querySelectorAll('.lane').forEach(l => l.classList.remove('drag-over'));
+      lane.classList.add('drag-over');
+    });
+
+    area.addEventListener('dragleave', e => {
+      if (!area.contains(e.relatedTarget)) lane.classList.remove('drag-over');
+    });
+
+    area.addEventListener('drop', e => {
+      e.preventDefault();
+      lane.classList.remove('drag-over');
+      if (!dragState) return;
+      const newLane = area.dataset.lane;
+      didDrag = true;
+
+      if (dragState.type === 'commitment') {
+        const c = appState.commitments.find(x => x.id === dragState.id);
+        if (c && c.lane !== newLane) { c.lane = newLane; save(); renderApp(); }
+      } else {
+        const t = appState.tasks.find(x => x.id === dragState.id);
+        if (t && t.lane !== newLane) { t.lane = newLane; save(); renderApp(); }
+      }
+    });
+  });
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+
+load();
+renderApp();
+</script>
+</body>
+</html>
