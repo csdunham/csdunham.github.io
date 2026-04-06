@@ -22,18 +22,27 @@
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg2); color: var(--text); min-height: 100vh; }
 
   /* ── Top bar ── */
-  .topbar { background: var(--bg); border-bottom: 0.5px solid var(--border); padding: 0 1.5rem; height: 52px; display: flex; align-items: center; justify-content: space-between; }
-  .topbar-title { font-size: 15px; font-weight: 500; }
+  .topbar { background: var(--bg); border-bottom: 0.5px solid var(--border); padding: 0 1.5rem; height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .topbar-left { display: flex; align-items: center; gap: 16px; }
+  .topbar-title { font-size: 15px; font-weight: 500; white-space: nowrap; }
   .topbar-note { font-size: 12px; color: var(--text3); font-style: italic; }
+  .toggle-wrap { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text2); cursor: pointer; user-select: none; white-space: nowrap; }
+  .toggle { position: relative; width: 32px; height: 18px; flex-shrink: 0; }
+  .toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .toggle-track { position: absolute; inset: 0; background: var(--border2); border-radius: 9px; transition: background 0.2s; }
+  .toggle input:checked + .toggle-track { background: #1a1a1a; }
+  .toggle-thumb { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; background: white; border-radius: 50%; transition: transform 0.2s; pointer-events: none; }
+  .toggle input:checked ~ .toggle-thumb { transform: translateX(14px); }
   .main { padding: 1.5rem; max-width: 1200px; margin: 0 auto; }
 
   /* ── Buttons ── */
   .btn { background: transparent; border: 0.5px solid var(--border2); border-radius: var(--radius); padding: 6px 12px; font-size: 13px; cursor: pointer; color: var(--text); display: inline-flex; align-items: center; gap: 6px; }
-  .btn:hover { background: var(--bg2); }
+  .btn:hover { background: var(--bg3); }
   .btn-primary { background: var(--text); color: var(--bg); border-color: transparent; }
-  .btn-primary:hover { opacity: 0.85; }
+  .btn-primary:hover { background: #333; }
   .btn-sm { padding: 4px 8px; font-size: 12px; }
-  .btn-danger { color: #A32D2D; border-color: #F09595; }
+  .btn-danger { color: #A32D2D; border-color: #F09595; background: transparent; }
+  .btn-danger:hover { background: #FCEBEB; }
 
   /* ── Kanban ── */
   .view-header { display: flex; align-items: center; gap: 12px; margin-bottom: 1.25rem; flex-wrap: wrap; }
@@ -58,10 +67,12 @@
   .lane[data-lane="Someday"] .lane-title { color: #3C3489; }
   .lane[data-lane="Done"] .lane-title { color: #5F5E5A; }
   .cards-area { min-height: 40px; }
-  .card { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 6px; user-select: none; transition: opacity 0.15s; }
+  .card { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 6px; user-select: none; transition: opacity 0.15s; position: relative; }
   .card[draggable="true"] { cursor: grab; }
   .card[draggable="true"]:active { cursor: grabbing; }
   .card.dragging { opacity: 0.4; }
+  .card.drag-insert-above { border-top: 2px solid #378ADD; }
+  .card.drag-insert-below { border-bottom: 2px solid #378ADD; }
   .card:hover { border-color: var(--border2); }
   .card-title { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
   .card-meta { font-size: 11px; color: var(--text2); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -71,6 +82,7 @@
   .badge-Someday { background: #EEEDFE; color: #3C3489; }
   .badge-Done { background: #F1EFE8; color: #5F5E5A; }
   .task-count { font-size: 11px; color: var(--text3); }
+  .completed-date { font-size: 11px; color: var(--text3); }
   .empty { font-size: 12px; color: var(--text3); text-align: center; padding: 16px 0; }
 
   /* ── Modal ── */
@@ -91,8 +103,18 @@
 <body>
 
 <div class="topbar">
-  <span class="topbar-title">Work Tracker</span>
-  <span class="topbar-note">Standalone mode — data saved in this browser</span>
+  <div class="topbar-left">
+    <span class="topbar-title">Work Tracker</span>
+    <span class="topbar-note">Standalone mode — data saved in this browser</span>
+  </div>
+  <label class="toggle-wrap">
+    <span>Hide old done items</span>
+    <span class="toggle">
+      <input type="checkbox" id="hide-old-toggle" onchange="renderApp()">
+      <span class="toggle-track"></span>
+      <span class="toggle-thumb"></span>
+    </span>
+  </label>
 </div>
 <div class="main">
   <div id="kanban-root"></div>
@@ -103,13 +125,9 @@
 const STORAGE_KEY = 'work_tracker_data';
 const LANES = ['Active', 'Waiting On', 'Someday', 'Done'];
 const BADGE_KEY = { 'Active': 'Active', 'Waiting On': 'WaitingOn', 'Someday': 'Someday', 'Done': 'Done' };
+const OLD_DONE_DAYS = 7;
 
-let appState = {
-  view: 'commitments',
-  commitmentId: null,
-  commitments: [],
-  tasks: []
-};
+let appState = { view: 'commitments', commitmentId: null, commitments: [], tasks: [] };
 let modalState = null;
 let dragState = null;
 let didDrag = false;
@@ -118,40 +136,65 @@ let didDrag = false;
 
 function save() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      commitments: appState.commitments,
-      tasks: appState.tasks
-    }));
-  } catch(e) {
-    console.warn('Could not save to localStorage:', e);
-  }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ commitments: appState.commitments, tasks: appState.tasks }));
+  } catch(e) { console.warn('Could not save:', e); }
 }
 
 function load() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const data = JSON.parse(raw);
-      appState.commitments = data.commitments || [];
-      appState.tasks = data.tasks || [];
-    }
-  } catch(e) {
-    appState.commitments = [];
-    appState.tasks = [];
-  }
+    if (raw) { const d = JSON.parse(raw); appState.commitments = d.commitments || []; appState.tasks = d.tasks || []; }
+  } catch(e) { appState.commitments = []; appState.tasks = []; }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function uid() { return 'id' + Math.random().toString(36).slice(2); }
-function esc(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function badgeHTML(lane) { return `<span class="badge badge-${BADGE_KEY[lane] || 'Done'}">${lane}</span>`; }
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function badgeHTML(lane) { return `<span class="badge badge-${BADGE_KEY[lane]||'Done'}">${lane}</span>`; }
 function tasksFor(cid) { return appState.tasks.filter(t => t.commitmentId === cid); }
-function laneItems(items, lane) { return items.filter(i => i.lane === lane); }
+function today() { return new Date().toISOString().slice(0,10); }
+
+function isOldDone(item) {
+  if (item.lane !== 'Done' || !item.completedDate) return false;
+  return (Date.now() - new Date(item.completedDate).getTime()) > OLD_DONE_DAYS * 86400000;
+}
+
+function hideOldEnabled() { return document.getElementById('hide-old-toggle')?.checked; }
+function shouldShow(item) { return !hideOldEnabled() || !isOldDone(item); }
+
+function laneItems(items, lane) {
+  const inLane = items.filter(i => i.lane === lane);
+  if (lane === 'Done') {
+    return inLane.sort((a, b) => {
+      if (!a.completedDate && !b.completedDate) return (a.sortOrder||0) - (b.sortOrder||0);
+      if (!a.completedDate) return 1;
+      if (!b.completedDate) return -1;
+      return new Date(b.completedDate) - new Date(a.completedDate);
+    });
+  }
+  return inLane.sort((a, b) => (a.sortOrder||0) - (b.sortOrder||0));
+}
+
 function commitmentProgress(cid) {
   const ts = tasksFor(cid);
   if (!ts.length) return 'no tasks';
-  return `${ts.filter(t => t.lane === 'Done').length}/${ts.length} done`;
+  return `${ts.filter(t => t.lane==='Done').length}/${ts.length} done`;
+}
+
+function formatDate(d) {
+  if (!d) return '';
+  return new Date(d + 'T00:00:00').toLocaleDateString(undefined, { month:'short', day:'numeric', year:'numeric' });
+}
+
+function normalizeSortOrders() {
+  LANES.forEach(lane => {
+    [appState.commitments, appState.tasks].forEach(col => {
+      col.filter(i => i.lane === lane)
+         .sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0))
+         .forEach((item, idx) => { item.sortOrder = (idx+1)*1000; });
+    });
+  });
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
@@ -159,36 +202,38 @@ function commitmentProgress(cid) {
 function renderKanban(items, cardFn) {
   return `<div class="kanban">${LANES.map(lane => {
     const its = laneItems(items, lane);
-    const cards = its.map(i => cardFn(i)).join('');
+    const visible = its.filter(shouldShow);
+    const hidden = its.length - visible.length;
+    const cards = visible.map(i => cardFn(i)).join('');
+    const hiddenNote = hidden > 0 ? `<div class="empty" style="font-style:italic">${hidden} older item${hidden>1?'s':''} hidden</div>` : '';
     return `<div class="lane" data-lane="${lane}">
-      <div class="lane-header">
-        <span class="lane-title">${lane}</span>
-        <span class="lane-count">${its.length}</span>
-      </div>
+      <div class="lane-header"><span class="lane-title">${lane}</span><span class="lane-count">${its.length}</span></div>
       <div class="cards-area" data-lane="${lane}">
-        ${cards || '<div class="empty">—</div>'}
+        ${cards || (!hiddenNote ? '<div class="empty">—</div>' : '')}
+        ${hiddenNote}
       </div>
     </div>`;
   }).join('')}</div>`;
 }
 
 function commitmentCard(c) {
+  const dateStr = c.completedDate ? `<span class="completed-date">Done ${formatDate(c.completedDate)}</span>` : '';
   return `<div class="card" draggable="true" data-id="${c.id}" data-type="commitment">
     <div class="card-title">${esc(c.title)}</div>
-    <div class="card-meta">${badgeHTML(c.lane)}<span class="task-count">${commitmentProgress(c.id)}</span></div>
+    <div class="card-meta">${badgeHTML(c.lane)}<span class="task-count">${commitmentProgress(c.id)}</span>${dateStr}</div>
   </div>`;
 }
 
 function taskCard(t) {
+  const dateStr = t.completedDate ? `<span class="completed-date">Done ${formatDate(t.completedDate)}</span>` : '';
   return `<div class="card" draggable="true" data-id="${t.id}" data-type="task">
     <div class="card-title">${esc(t.title)}</div>
-    <div class="card-meta">${badgeHTML(t.lane)}</div>
+    <div class="card-meta">${badgeHTML(t.lane)}${dateStr}</div>
   </div>`;
 }
 
 function renderApp() {
   let content = '';
-
   if (appState.view === 'tasks') {
     const c = appState.commitments.find(x => x.id === appState.commitmentId);
     if (!c) { appState.view = 'commitments'; renderApp(); return; }
@@ -199,7 +244,7 @@ function renderApp() {
           <span class="breadcrumb-sep">›</span>
           <span class="breadcrumb-current">${esc(c.title)}</span>
         </div>
-        <button class="btn btn-sm btn-primary" onclick="openModal('task', null)">+ New task</button>
+        <button class="btn btn-sm btn-primary" onclick="openModal('task',null)">+ New task</button>
       </div>
       <div class="commitment-detail">
         <div class="commitment-detail-top">
@@ -208,7 +253,7 @@ function renderApp() {
             ${c.notes ? `<div class="commitment-detail-notes">${esc(c.notes)}</div>` : ''}
             ${badgeHTML(c.lane)}
           </div>
-          <button class="btn btn-sm" onclick="openModal('commitment', '${c.id}')">Edit</button>
+          <button class="btn btn-sm" onclick="openModal('commitment','${c.id}')">Edit</button>
         </div>
       </div>
       ${renderKanban(tasksFor(c.id), taskCard)}`;
@@ -216,11 +261,10 @@ function renderApp() {
     content = `
       <div class="view-header">
         <h2>Commitments</h2>
-        <button class="btn btn-sm btn-primary" onclick="openModal('commitment', null)">+ New commitment</button>
+        <button class="btn btn-sm btn-primary" onclick="openModal('commitment',null)">+ New commitment</button>
       </div>
       ${renderKanban(appState.commitments, commitmentCard)}`;
   }
-
   document.getElementById('kanban-root').innerHTML = content;
   setupDrag();
   renderModal();
@@ -228,119 +272,99 @@ function renderApp() {
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
 
-function openModal(type, editId) {
-  modalState = { type, editId };
-  renderModal();
-}
-
-function closeModal() {
-  modalState = null;
-  renderModal();
-}
+function openModal(type, editId) { modalState = { type, editId }; renderModal(); }
+function closeModal() { modalState = null; renderModal(); }
 
 function renderModal() {
   const el = document.getElementById('modal-container');
   if (!modalState) { el.innerHTML = ''; return; }
-
   const { type, editId } = modalState;
   const isTask = type === 'task';
-  const item = editId
-    ? (isTask ? appState.tasks.find(t => t.id === editId) : appState.commitments.find(c => c.id === editId))
-    : null;
-
-  const title = item
-    ? (isTask ? 'Edit task' : 'Edit commitment')
-    : (isTask ? 'New task' : 'New commitment');
-
-  const laneOpts = LANES.map(l =>
-    `<option value="${l}"${item && item.lane === l ? ' selected' : ''}>${l}</option>`
-  ).join('');
-
+  const item = editId ? (isTask ? appState.tasks.find(t => t.id===editId) : appState.commitments.find(c => c.id===editId)) : null;
+  const title = item ? (isTask ? 'Edit task' : 'Edit commitment') : (isTask ? 'New task' : 'New commitment');
+  const laneOpts = LANES.map(l => `<option value="${l}"${item&&item.lane===l?' selected':''}>${l}</option>`).join('');
   const commitmentOpts = appState.commitments.map(c =>
-    `<option value="${c.id}"${
-      (item && item.commitmentId === c.id) || (appState.commitmentId === c.id && !item) ? ' selected' : ''
-    }>${esc(c.title)}</option>`
+    `<option value="${c.id}"${(item&&item.commitmentId===c.id)||(appState.commitmentId===c.id&&!item)?' selected':''}>${esc(c.title)}</option>`
   ).join('');
-
-  const noteField = !isTask
-    ? `<div class="field"><label>Notes</label><textarea id="f-notes">${esc(item && item.notes || '')}</textarea></div>`
-    : '';
-
-  const commitmentField = isTask
-    ? `<div class="field"><label>Commitment</label><select id="f-commitment">${commitmentOpts}</select></div>`
-    : '';
-
-  const deleteBtn = item
-    ? `<button class="btn btn-sm btn-danger" onclick="deleteItem('${editId}','${type}')">Delete</button>`
-    : '';
+  const noteField = !isTask ? `<div class="field"><label>Notes</label><textarea id="f-notes">${esc(item&&item.notes||'')}</textarea></div>` : '';
+  const commitmentField = isTask ? `<div class="field"><label>Commitment</label><select id="f-commitment">${commitmentOpts}</select></div>` : '';
+  const deleteBtn = item ? `<button class="btn btn-sm btn-danger" onclick="deleteItem('${editId}','${type}')">Delete</button>` : '';
 
   el.innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeModal()">
-    <div class="modal">
+    <div class="modal" id="the-modal">
       <h3>${title}</h3>
-      <div class="field"><label>Title</label><input id="f-title" value="${esc(item && item.title || '')}"></div>
-      ${commitmentField}
-      ${noteField}
+      <div class="field"><label>Title</label><input id="f-title" value="${esc(item&&item.title||'')}"></div>
+      ${commitmentField}${noteField}
       <div class="field"><label>Status</label><select id="f-lane">${laneOpts}</select></div>
       <div class="modal-actions">
         ${deleteBtn}
         <button class="btn btn-sm" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-sm btn-primary" onclick="saveItem('${type}','${editId || ''}')">Save</button>
+        <button class="btn btn-sm btn-primary" onclick="saveItem('${type}','${editId||''}')">Save</button>
       </div>
     </div>
   </div>`;
 
   document.getElementById('f-title').focus();
+  document.getElementById('the-modal').addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.preventDefault(); closeModal(); }
+    if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); saveItem(type, editId||''); }
+  });
 }
 
 function saveItem(type, editId) {
-  const title = document.getElementById('f-title').value.trim();
-  if (!title) return;
-  const lane = document.getElementById('f-lane').value;
+  const titleEl = document.getElementById('f-title');
+  const title = titleEl.value.trim();
+  if (!title) { titleEl.focus(); return; }
+  const newLane = document.getElementById('f-lane').value;
 
   if (type === 'commitment') {
     const notes = document.getElementById('f-notes').value.trim();
     if (editId) {
-      const c = appState.commitments.find(x => x.id === editId);
-      if (c) { c.title = title; c.lane = lane; c.notes = notes; }
+      const c = appState.commitments.find(x => x.id===editId);
+      if (c) {
+        if (newLane==='Done' && c.lane!=='Done') c.completedDate = today();
+        else if (newLane!=='Done' && c.lane==='Done') c.completedDate = null;
+        c.title = title; c.notes = notes; c.lane = newLane;
+      }
     } else {
-      appState.commitments.push({ id: uid(), title, lane, notes });
+      const maxOrder = Math.max(0, ...appState.commitments.filter(x=>x.lane===newLane).map(x=>x.sortOrder||0));
+      appState.commitments.push({ id:uid(), title, lane:newLane, notes, sortOrder:maxOrder+1000, completedDate:newLane==='Done'?today():null });
     }
   } else {
     const commitmentId = document.getElementById('f-commitment').value;
     if (editId) {
-      const t = appState.tasks.find(x => x.id === editId);
-      if (t) { t.title = title; t.lane = lane; t.commitmentId = commitmentId; }
+      const t = appState.tasks.find(x => x.id===editId);
+      if (t) {
+        if (newLane==='Done' && t.lane!=='Done') t.completedDate = today();
+        else if (newLane!=='Done' && t.lane==='Done') t.completedDate = null;
+        t.title = title; t.lane = newLane; t.commitmentId = commitmentId;
+      }
     } else {
-      appState.tasks.push({ id: uid(), commitmentId, title, lane });
+      const maxOrder = Math.max(0, ...appState.tasks.filter(x=>x.lane===newLane&&x.commitmentId===commitmentId).map(x=>x.sortOrder||0));
+      appState.tasks.push({ id:uid(), commitmentId, title, lane:newLane, sortOrder:maxOrder+1000, completedDate:newLane==='Done'?today():null });
     }
   }
-
-  save();
-  closeModal();
-  renderApp();
+  save(); closeModal(); renderApp();
 }
 
 function deleteItem(id, type) {
-  if (type === 'commitment') {
-    appState.commitments = appState.commitments.filter(c => c.id !== id);
-    appState.tasks = appState.tasks.filter(t => t.commitmentId !== id);
-    appState.view = 'commitments';
-    appState.commitmentId = null;
+  if (type==='commitment') {
+    appState.commitments = appState.commitments.filter(c=>c.id!==id);
+    appState.tasks = appState.tasks.filter(t=>t.commitmentId!==id);
+    appState.view='commitments'; appState.commitmentId=null;
   } else {
-    appState.tasks = appState.tasks.filter(t => t.id !== id);
+    appState.tasks = appState.tasks.filter(t=>t.id!==id);
   }
-  save();
-  closeModal();
-  renderApp();
+  save(); closeModal(); renderApp();
 }
 
-function goHome() {
-  appState.view = 'commitments';
-  appState.commitmentId = null;
-  renderApp();
-}
+function goHome() { appState.view='commitments'; appState.commitmentId=null; renderApp(); }
 
 // ── Drag & Drop ───────────────────────────────────────────────────────────────
+
+function clearInsertIndicators() {
+  document.querySelectorAll('.card').forEach(c => c.classList.remove('drag-insert-above','drag-insert-below'));
+}
 
 function setupDrag() {
   document.querySelectorAll('.card[draggable]').forEach(card => {
@@ -353,50 +377,90 @@ function setupDrag() {
 
     card.addEventListener('dragend', () => {
       card.classList.remove('dragging');
+      clearInsertIndicators();
       document.querySelectorAll('.lane').forEach(l => l.classList.remove('drag-over'));
       dragState = null;
     });
 
+    card.addEventListener('dragover', e => {
+      e.preventDefault(); e.stopPropagation();
+      if (!dragState) return;
+      clearInsertIndicators();
+      const rect = card.getBoundingClientRect();
+      if (e.clientY < rect.top + rect.height / 2) card.classList.add('drag-insert-above');
+      else card.classList.add('drag-insert-below');
+    });
+
+    card.addEventListener('drop', e => {
+      e.preventDefault(); e.stopPropagation();
+      if (!dragState || dragState.id === card.dataset.id) { clearInsertIndicators(); return; }
+      didDrag = true;
+      const insertAbove = card.classList.contains('drag-insert-above');
+      clearInsertIndicators();
+      document.querySelectorAll('.lane').forEach(l => l.classList.remove('drag-over'));
+
+      const collection = dragState.type==='commitment' ? appState.commitments : appState.tasks;
+      const dragged = collection.find(x => x.id===dragState.id);
+      const target = collection.find(x => x.id===card.dataset.id);
+      if (!dragged || !target) return;
+
+      const targetLane = target.lane;
+      if (dragged.lane !== targetLane) {
+        if (targetLane==='Done') dragged.completedDate = today();
+        else if (dragged.lane==='Done') dragged.completedDate = null;
+        dragged.lane = targetLane;
+      }
+
+      const lanePeers = laneItems(collection, targetLane);
+      const idx = lanePeers.findIndex(x => x.id===target.id);
+      const targetOrder = target.sortOrder || 0;
+      if (insertAbove) {
+        const prev = lanePeers[idx-1];
+        dragged.sortOrder = prev ? ((prev.sortOrder||0) + targetOrder) / 2 : targetOrder - 500;
+      } else {
+        const next = lanePeers[idx+1];
+        dragged.sortOrder = next ? (targetOrder + (next.sortOrder||0)) / 2 : targetOrder + 500;
+      }
+      save(); renderApp();
+    });
+
     card.addEventListener('click', () => {
       if (didDrag) return;
-      if (card.dataset.type === 'commitment') {
-        appState.view = 'tasks';
-        appState.commitmentId = card.dataset.id;
-        renderApp();
-      } else {
-        openModal('task', card.dataset.id);
-      }
+      if (card.dataset.type==='commitment') { appState.view='tasks'; appState.commitmentId=card.dataset.id; renderApp(); }
+      else openModal('task', card.dataset.id);
     });
   });
 
   document.querySelectorAll('.cards-area').forEach(area => {
     const lane = area.closest('.lane');
-
     area.addEventListener('dragover', e => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
+      e.preventDefault(); e.dataTransfer.dropEffect='move';
       document.querySelectorAll('.lane').forEach(l => l.classList.remove('drag-over'));
       lane.classList.add('drag-over');
     });
-
     area.addEventListener('dragleave', e => {
       if (!area.contains(e.relatedTarget)) lane.classList.remove('drag-over');
     });
-
     area.addEventListener('drop', e => {
       e.preventDefault();
       lane.classList.remove('drag-over');
+      clearInsertIndicators();
       if (!dragState) return;
-      const newLane = area.dataset.lane;
+      if (e.target !== area && e.target.closest && e.target.closest('.card')) return;
       didDrag = true;
 
-      if (dragState.type === 'commitment') {
-        const c = appState.commitments.find(x => x.id === dragState.id);
-        if (c && c.lane !== newLane) { c.lane = newLane; save(); renderApp(); }
-      } else {
-        const t = appState.tasks.find(x => x.id === dragState.id);
-        if (t && t.lane !== newLane) { t.lane = newLane; save(); renderApp(); }
+      const newLane = area.dataset.lane;
+      const collection = dragState.type==='commitment' ? appState.commitments : appState.tasks;
+      const item = collection.find(x => x.id===dragState.id);
+      if (!item) return;
+      if (item.lane !== newLane) {
+        if (newLane==='Done') item.completedDate = today();
+        else if (item.lane==='Done') item.completedDate = null;
+        item.lane = newLane;
       }
+      const maxOrder = Math.max(0, ...laneItems(collection, newLane).map(x => x.sortOrder||0));
+      item.sortOrder = maxOrder + 1000;
+      save(); renderApp();
     });
   });
 }
@@ -404,6 +468,8 @@ function setupDrag() {
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 load();
+normalizeSortOrders();
+save();
 renderApp();
 </script>
 </body>
