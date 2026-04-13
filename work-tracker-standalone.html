@@ -235,6 +235,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
         <span class="toggle"><input type="checkbox" id="today-toggle" onchange="renderApp()"><span class="toggle-track"></span><span class="toggle-thumb"></span></span>
       </label>
       <label class="toggle-wrap">
+        <span>Color mode</span>
+        <span class="toggle"><input type="checkbox" id="color-mode-toggle" onchange="renderApp()"><span class="toggle-track"></span><span class="toggle-thumb"></span></span>
+      </label>
+      <label class="toggle-wrap">
         <span>Dark mode</span>
         <span class="toggle"><input type="checkbox" id="dark-mode-toggle" onchange="toggleDark(this.checked)"><span class="toggle-track"></span><span class="toggle-thumb"></span></span>
       </label>
@@ -320,6 +324,10 @@ function renderTitle() {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function uid() { return 'id'+Math.random().toString(36).slice(2); }
 function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function linkify(s) {
+  // s is already HTML-escaped; wrap http/https URLs in anchor tags
+  return s.replace(/(https?:\/\/[^\s&lt;&gt;"]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:var(--blue)">$1</a>');
+}
 function badgeHTML(lane) { return `<span class="badge badge-${BADGE_KEY[lane]||'Done'}">${lane}</span>`; }
 function tasksFor(cid) { return appState.tasks.filter(t=>t.commitmentId===cid); }
 function today() {
@@ -354,6 +362,55 @@ function formatDate(d) {
   if (!d) return '';
   return new Date(d+'T00:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
 }
+function formatDueDate(d) {
+  if (!d) return '';
+  const todayMs = new Date(today()+'T00:00:00').getTime();
+  const dueMs   = new Date(d+'T00:00:00').getTime();
+  const days    = Math.round((dueMs - todayMs) / 86400000);
+  const DAYS    = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const dow     = DAYS[new Date(d+'T00:00:00').getDay()];
+  if (days === -1) return 'yesterday';
+  if (days === 0)  return 'today';
+  if (days === 1)  return 'tomorrow';
+  if (days >= 2  && days <= 6)   return dow;
+  if (days >= 7  && days <= 13)  return 'next ' + dow;
+  if (days >= 14)                return 'in ' + Math.round(days / 7) + ' weeks';
+  if (days <= -2 && days >= -6)  return 'last ' + dow;
+  return Math.round(Math.abs(days) / 7) + ' weeks ago';
+}
+function colorModeEnabled() { return document.getElementById('color-mode-toggle')?.checked; }
+
+// Returns inline style string for due-date color tinting, or '' if not applicable
+function dueDateStyle(commitment) {
+  if (!colorModeEnabled()) return '';
+  if (!commitment || !commitment.dueDate) return '';
+  if (commitment.lane === 'Done') return '';
+  // Days until due (negative = overdue)
+  const todayMs = new Date(today()+'T00:00:00').getTime();
+  const dueMs   = new Date(commitment.dueDate+'T00:00:00').getTime();
+  const days    = Math.round((dueMs - todayMs) / 86400000);
+  // Clamp: <=0 → red, >=10 → blue, 1-9 → gradient
+  const t = days <= 0 ? 1 : days >= 10 ? 0 : (10 - days) / 10; // 0=blue, 1=red
+  // Interpolate hue: blue=220, red=0 (via 220→0, same direction works in HSL)
+  const hue = Math.round(220 * (1 - t));
+  const bg  = `hsla(${hue},80%,55%,0.13)`;
+  const border = `hsla(${hue},70%,45%,0.5)`;
+  return `background:${bg};border-color:${border};`;
+}
+
+// Returns inline style for the commitment-detail panel
+function dueDatePanelStyle(commitment) {
+  if (!colorModeEnabled()) return '';
+  if (!commitment || !commitment.dueDate) return '';
+  if (commitment.lane === 'Done') return '';
+  const todayMs = new Date(today()+'T00:00:00').getTime();
+  const dueMs   = new Date(commitment.dueDate+'T00:00:00').getTime();
+  const days    = Math.round((dueMs - todayMs) / 86400000);
+  const t = days <= 0 ? 1 : days >= 10 ? 0 : (10 - days) / 10;
+  const hue = Math.round(220 * (1 - t));
+  return `background:hsla(${hue},80%,55%,0.13);border-color:hsla(${hue},70%,45%,0.5);`;
+}
+
 function normalizeSortOrders() {
   LANES.forEach(lane=>{
     [appState.commitments,appState.tasks].forEach(col=>{
@@ -390,16 +447,21 @@ function renderKanban(items, cardFn) {
 }
 
 function commitmentCard(c) {
-  const dateStr = c.completedDate?`<span class="completed-date">Done ${formatDate(c.completedDate)}</span>`:'';
-  return `<div class="card" draggable="true" data-id="${c.id}" data-type="commitment">
+  const completedStr = c.completedDate?`<span class="completed-date">Done ${formatDate(c.completedDate)}</span>`:'';
+  const dueStr = c.dueDate&&c.lane!=='Done'?`<span class="completed-date">Commitment for ${formatDueDate(c.dueDate)}</span>`:'';
+  const style = dueDateStyle(c);
+  return `<div class="card" draggable="true" data-id="${c.id}" data-type="commitment"${style?` style="${style}"`:''}> 
     <div class="card-body"><div class="card-title">${esc(c.title)}</div>
-    <div class="card-meta">${badgeHTML(c.lane)}<span class="task-count">${commitmentProgress(c.id)}</span>${dateStr}</div></div>
+    <div class="card-meta">${badgeHTML(c.lane)}<span class="task-count">${commitmentProgress(c.id)}</span>${dueStr}${completedStr}</div></div>
     <div class="drag-handle" title="Drag to reorder">${DRAG_HANDLE_SVG}</div>
   </div>`;
 }
 function taskCard(t) {
   const dateStr = t.completedDate?`<span class="completed-date">Done ${formatDate(t.completedDate)}</span>`:'';
-  return `<div class="card" draggable="true" data-id="${t.id}" data-type="task">
+  // Task cards get the parent commitment's color
+  const commitment = appState.commitments.find(c=>c.id===t.commitmentId);
+  const style = t.lane!=='Done' ? dueDateStyle(commitment) : '';
+  return `<div class="card" draggable="true" data-id="${t.id}" data-type="task"${style?` style="${style}"`:''}> 
     <div class="card-body"><div class="card-title">${esc(t.title)}</div>
     <div class="card-meta">${badgeHTML(t.lane)}${dateStr}</div></div>
     <div class="drag-handle" title="Drag to reorder">${DRAG_HANDLE_SVG}</div>
@@ -416,9 +478,10 @@ function renderApp() {
       <div class="breadcrumb"><span class="breadcrumb-link" onclick="goHome()">Commitments</span><span class="breadcrumb-sep">›</span><span class="breadcrumb-current">${esc(c.title)}</span></div>
       <button class="btn btn-sm btn-primary" onclick="openModal('task',null)">+ New task</button>
     </div>
-    <div class="commitment-detail"><div class="commitment-detail-top">
+    <div class="commitment-detail" style="${dueDatePanelStyle(c)}"><div class="commitment-detail-top">
       <div><div class="commitment-detail-title">${esc(c.title)}</div>
-      ${c.notes?`<div class="commitment-detail-notes">${esc(c.notes)}</div>`:''}${badgeHTML(c.lane)}</div>
+      ${c.notes?`<div class="commitment-detail-notes">${linkify(esc(c.notes))}</div>`:''}
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">${badgeHTML(c.lane)}${c.dueDate?`<span style="font-size:12px;color:var(--text2)">Commitment for ${formatDueDate(c.dueDate)}</span>`:''}</div></div>
       <button class="btn btn-sm" onclick="openModal('commitment','${c.id}')">Edit</button>
     </div></div>
     ${renderKanban(tasksFor(c.id),taskCard)}`;
@@ -454,15 +517,16 @@ function renderMobile() {
 
   // Header
   if (isTaskView) {
+    const panelStyle = dueDatePanelStyle(commitment);
     header.innerHTML = `
       <div class="mobile-back" onclick="goHome()">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
         Commitments
       </div>
-      <div style="margin-top:8px;padding-bottom:10px;border-bottom:0.5px solid var(--border)">
+      <div style="margin-top:8px;padding:10px;border-radius:var(--radius);margin-bottom:2px;border:0.5px solid var(--border);${panelStyle}">
         <div style="font-size:16px;font-weight:500;margin-bottom:3px">${esc(commitment.title)}</div>
-        ${commitment.notes?`<div style="font-size:13px;color:var(--text2);margin-bottom:5px">${esc(commitment.notes)}</div>`:''}
-        <div style="display:flex;align-items:center;gap:8px">${badgeHTML(commitment.lane)}<button class="btn btn-sm" onclick="openModal('commitment','${commitment.id}')">Edit</button></div>
+        ${commitment.notes?`<div style="font-size:13px;color:var(--text2);margin-bottom:5px">${linkify(esc(commitment.notes))}</div>`:''}
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${badgeHTML(commitment.lane)}${commitment.dueDate?`<span style="font-size:12px;color:var(--text2)">Commitment for ${formatDueDate(commitment.dueDate)}</span>`:''}<button class="btn btn-sm" onclick="openModal('commitment','${commitment.id}')">Edit</button></div>
       </div>`;
   } else {
     header.innerHTML = '';
@@ -557,12 +621,14 @@ function mobileCardControls(item, type, items) {
 }
 
 function mobileCommitmentCard(c) {
-  const dateStr = c.completedDate?`<span class="completed-date">Done ${formatDate(c.completedDate)}</span>`:'';
-  return `<div class="mobile-card" data-mobile-id="${c.id}" data-mobile-type="commitment">
+  const completedStr = c.completedDate?`<span class="completed-date">Done ${formatDate(c.completedDate)}</span>`:'';
+  const dueStr = c.dueDate&&c.lane!=='Done'?`<span class="completed-date">Commitment for ${formatDueDate(c.dueDate)}</span>`:'';
+  const style = dueDateStyle(c);
+  return `<div class="mobile-card" data-mobile-id="${c.id}" data-mobile-type="commitment"${style?` style="${style}"`:''}> 
     <div class="mobile-card-inner">
       <div class="mobile-card-body">
         <div class="mobile-card-title">${esc(c.title)}</div>
-        <div class="mobile-card-meta">${badgeHTML(c.lane)}<span class="task-count">${commitmentProgress(c.id)}</span>${dateStr}</div>
+        <div class="mobile-card-meta">${badgeHTML(c.lane)}<span class="task-count">${commitmentProgress(c.id)}</span>${dueStr}${completedStr}</div>
       </div>
       ${mobileCardControls(c, 'commitment', appState.commitments)}
     </div>
@@ -572,7 +638,9 @@ function mobileCommitmentCard(c) {
 function mobileTaskCard(t) {
   const dateStr = t.completedDate?`<span class="completed-date">Done ${formatDate(t.completedDate)}</span>`:'';
   const items = tasksFor(t.commitmentId);
-  return `<div class="mobile-card" data-mobile-id="${t.id}" data-mobile-type="task">
+  const commitment = appState.commitments.find(c=>c.id===t.commitmentId);
+  const style = t.lane!=='Done' ? dueDateStyle(commitment) : '';
+  return `<div class="mobile-card" data-mobile-id="${t.id}" data-mobile-type="task"${style?` style="${style}"`:''}> 
     <div class="mobile-card-inner">
       <div class="mobile-card-body">
         <div class="mobile-card-title">${esc(t.title)}</div>
@@ -633,33 +701,32 @@ function openSettingsSheet() {
   const darkOn = document.getElementById('dark-mode-toggle')?.checked || false;
   const hideOld = document.getElementById('hide-old-toggle')?.checked || false;
   const todayOn = document.getElementById('today-toggle')?.checked || false;
+  const colorOn = colorModeEnabled() || false;
   const el = document.getElementById('modal-container');
   el.innerHTML = `<div class="sheet-bg" onclick="if(event.target===this)closeSettingsSheet()">
     <div class="sheet">
       <h3>Settings</h3>
       <div class="sheet-row"><span class="sheet-label">Today mode</span>
-        <span class="toggle"><input type="checkbox" id="m-today-toggle" ${todayOn?'checked':''}><span class="toggle-track"></span><span class="toggle-thumb"></span></span>
+        <label class="toggle"><input type="checkbox" id="m-today-toggle" ${todayOn?'checked':''}><span class="toggle-track"></span><span class="toggle-thumb"></span></label>
+      </div>
+      <div class="sheet-row"><span class="sheet-label">Color mode</span>
+        <label class="toggle"><input type="checkbox" id="m-color-toggle" ${colorOn?'checked':''}><span class="toggle-track"></span><span class="toggle-thumb"></span></label>
       </div>
       <div class="sheet-row"><span class="sheet-label">Dark mode</span>
-        <span class="toggle"><input type="checkbox" id="m-dark-toggle" ${darkOn?'checked':''}><span class="toggle-track"></span><span class="toggle-thumb"></span></span>
+        <label class="toggle"><input type="checkbox" id="m-dark-toggle" ${darkOn?'checked':''}><span class="toggle-track"></span><span class="toggle-thumb"></span></label>
       </div>
       <div class="sheet-row"><span class="sheet-label">Hide old done items</span>
-        <span class="toggle"><input type="checkbox" id="m-hide-toggle" ${hideOld?'checked':''}><span class="toggle-track"></span><span class="toggle-thumb"></span></span>
+        <label class="toggle"><input type="checkbox" id="m-hide-toggle" ${hideOld?'checked':''}><span class="toggle-track"></span><span class="toggle-thumb"></span></label>
       </div>
       <div style="margin-top:1rem">
         <button class="btn btn-full-width" onclick="closeSettingsSheet()">Done</button>
       </div>
     </div>
   </div>`;
-  document.getElementById('m-today-toggle').onchange = e => {
-    syncToggle('today-toggle', e.target.checked); renderApp();
-  };
-  document.getElementById('m-dark-toggle').onchange = e => {
-    syncToggle('dark-mode-toggle', e.target.checked); toggleDark(e.target.checked);
-  };
-  document.getElementById('m-hide-toggle').onchange = e => {
-    syncToggle('hide-old-toggle', e.target.checked); renderApp();
-  };
+  document.getElementById('m-today-toggle').onchange = e => { syncToggle('today-toggle', e.target.checked); renderApp(); };
+  document.getElementById('m-color-toggle').onchange = e => { syncToggle('color-mode-toggle', e.target.checked); renderApp(); };
+  document.getElementById('m-dark-toggle').onchange = e => { syncToggle('dark-mode-toggle', e.target.checked); toggleDark(e.target.checked); };
+  document.getElementById('m-hide-toggle').onchange = e => { syncToggle('hide-old-toggle', e.target.checked); renderApp(); };
 }
 function closeSettingsSheet() { document.getElementById('modal-container').innerHTML = ''; }
 function syncToggle(id, val) {
@@ -680,13 +747,14 @@ function renderModal() {
   const laneOpts = LANES.map(l=>`<option value="${l}"${item&&item.lane===l?' selected':''}>${l}</option>`).join('');
   const commitmentOpts = appState.commitments.map(c=>`<option value="${c.id}"${(item&&item.commitmentId===c.id)||(appState.commitmentId===c.id&&!item)?' selected':''}>${esc(c.title)}</option>`).join('');
   const noteField = !isTask?`<div class="field"><label>Notes</label><textarea id="f-notes">${esc(item&&item.notes||'')}</textarea></div>`:'';
+  const dueDateField = !isTask?`<div class="field"><label>Commitment date (optional)</label><input type="date" id="f-due-date" value="${esc(item&&item.dueDate||'')}"></div>`:'';
   const commitmentField = isTask?`<div class="field"><label>Commitment</label><select id="f-commitment">${commitmentOpts}</select></div>`:'';
   const deleteBtn = item?`<button class="btn btn-sm btn-danger" onclick="deleteItem('${editId}','${type}')">Delete</button>`:'';
   el.innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeModal()">
     <div class="modal" id="the-modal">
       <h3>${title}</h3>
       <div class="field"><label>Title</label><input id="f-title" value="${esc(item&&item.title||'')}"></div>
-      ${commitmentField}${noteField}
+      ${commitmentField}${noteField}${dueDateField}
       <div class="field"><label>Status</label><select id="f-lane">${laneOpts}</select></div>
       <div class="modal-actions">${deleteBtn}
         <button class="btn btn-sm" onclick="closeModal()">Cancel</button>
@@ -708,12 +776,13 @@ function saveItem(type, editId) {
   const newLane=document.getElementById('f-lane').value;
   if (type==='commitment') {
     const notes=document.getElementById('f-notes').value.trim();
+    const dueDate=document.getElementById('f-due-date').value||null;
     if (editId) {
       const c=appState.commitments.find(x=>x.id===editId);
-      if (c){if(newLane==='Done'&&c.lane!=='Done')c.completedDate=today();else if(newLane!=='Done'&&c.lane==='Done')c.completedDate=null;c.title=title;c.notes=notes;c.lane=newLane;}
+      if (c){if(newLane==='Done'&&c.lane!=='Done')c.completedDate=today();else if(newLane!=='Done'&&c.lane==='Done')c.completedDate=null;c.title=title;c.notes=notes;c.lane=newLane;c.dueDate=dueDate;}
     } else {
       const maxOrder=Math.max(0,...appState.commitments.filter(x=>x.lane===newLane).map(x=>x.sortOrder||0));
-      appState.commitments.push({id:uid(),title,lane:newLane,notes,sortOrder:maxOrder+1000,completedDate:newLane==='Done'?today():null});
+      appState.commitments.push({id:uid(),title,lane:newLane,notes,dueDate,sortOrder:maxOrder+1000,completedDate:newLane==='Done'?today():null});
     }
   } else {
     const commitmentId=document.getElementById('f-commitment').value;
@@ -880,6 +949,29 @@ let lastMobile = isMobile();
 window.addEventListener('resize', ()=>{
   const nowMobile = isMobile();
   if (nowMobile !== lastMobile) { lastMobile = nowMobile; renderApp(); }
+});
+
+// ── Keyboard shortcuts ────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  // Only fire when no modal is open and focus is not in an input/textarea/select
+  if (modalState) return;
+  const tag = document.activeElement?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  if (isMobile()) return; // shortcuts are desktop-only
+  if (appState.view === 'commitments') {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      openModal('commitment', null);
+    }
+  } else if (appState.view === 'tasks') {
+    if (e.key === 'Backspace') {
+      e.preventDefault();
+      goHome();
+    } else if (e.key === ' ') {
+      e.preventDefault();
+      openModal('task', null);
+    }
+  }
 });
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
