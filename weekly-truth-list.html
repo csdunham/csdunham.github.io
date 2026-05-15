@@ -139,7 +139,7 @@
         }}>
           {/* Drag handle */}
           <div {...dragHandleProps} title="Drag to reorder"
-            style={{ display:"flex", flexDirection:"column", gap:"3px", padding:"4px 2px", marginTop:"2px", flexShrink:0, cursor: isDragging ? "grabbing" : "grab", opacity:0.25, transition:"opacity 0.15s" }}
+            style={{ display:"flex", flexDirection:"column", gap:"3px", padding:"4px 2px", marginTop:"2px", flexShrink:0, cursor: isDragging ? "grabbing" : "grab", opacity:0.25, transition:"opacity 0.15s", touchAction:"none", userSelect:"none" }}
             onMouseEnter={e => e.currentTarget.style.opacity="0.7"}
             onMouseLeave={e => e.currentTarget.style.opacity="0.25"}
           >
@@ -218,76 +218,160 @@
       );
     }
 
-    // ── SortableList ───────────────────────────────────────────────
+    // ── SortableList (pointer-events — works on iOS, Android, desktop) ──
     function SortableList({ items, columnId, color, onReorder, onDelete, onMove, allColumns }) {
       const [dragIndex, setDragIndex] = useState(null);
       const [overIndex, setOverIndex] = useState(null);
       const [overPos,   setOverPos]   = useState(null);
-      const dragItem = useRef(null);
+      // Floating clone position
+      const [cloneStyle, setCloneStyle] = useState(null);
 
-      const handleDragStart = (e, index) => {
-        dragItem.current = index;
-        setDragIndex(index);
-        e.dataTransfer.effectAllowed = "move";
-        const ghost = document.createElement("div");
-        ghost.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;";
-        document.body.appendChild(ghost);
-        e.dataTransfer.setDragImage(ghost, 0, 0);
-        setTimeout(() => document.body.removeChild(ghost), 0);
-      };
-      const handleDragOver = (e, index) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        const rect = e.currentTarget.getBoundingClientRect();
-        const pos = e.clientY < rect.top + rect.height / 2 ? "before" : "after";
-        setOverIndex(index); setOverPos(pos);
-      };
-      const handleDragLeave = () => { setOverIndex(null); setOverPos(null); };
-      const handleDrop = (e, index) => {
-        e.preventDefault();
-        const from = dragItem.current;
-        if (from === null || from === index) { reset(); return; }
-        const next = [...items];
-        const [moved] = next.splice(from, 1);
-        let insertAt = overPos === "before" ? index : index + 1;
-        if (from < index) insertAt = overPos === "before" ? index - 1 : index;
-        next.splice(Math.max(0, insertAt), 0, moved);
-        onReorder(columnId, next);
-        reset();
-      };
-      const handleDragEnd = () => reset();
-      const reset = () => { setDragIndex(null); setOverIndex(null); setOverPos(null); dragItem.current = null; };
+      const listRef    = useRef(null);
+      const stateRef   = useRef({}); // mutable drag state that doesn't need re-renders
+
+      // Build drag handle pointer handlers — attached to the grip dots
+      const makeHandleProps = (index) => ({
+        onPointerDown: (e) => {
+          // Only primary pointer (finger or left-click)
+          if (e.button !== undefined && e.button !== 0) return;
+          e.preventDefault();
+          e.stopPropagation();
+          e.currentTarget.setPointerCapture(e.pointerId);
+
+          const itemEls = listRef.current?.querySelectorAll("[data-sortable-item]");
+          const srcEl   = itemEls?.[index];
+          if (!srcEl) return;
+          const rect = srcEl.getBoundingClientRect();
+
+          stateRef.current = {
+            pointerId:  e.pointerId,
+            fromIndex:  index,
+            offsetX:    e.clientX - rect.left,
+            offsetY:    e.clientY - rect.top,
+            width:      rect.width,
+          };
+
+          setDragIndex(index);
+          setCloneStyle({
+            left:    rect.left,
+            top:     rect.top,
+            width:   rect.width,
+          });
+        },
+        onPointerMove: (e) => {
+          const s = stateRef.current;
+          if (s.fromIndex === undefined || s.fromIndex === null) return;
+          e.preventDefault();
+
+          // Move the floating clone
+          setCloneStyle({
+            left:  e.clientX - s.offsetX,
+            top:   e.clientY - s.offsetY,
+            width: s.width,
+          });
+
+          // Hit-test against sibling items to find drop target
+          const itemEls = listRef.current?.querySelectorAll("[data-sortable-item]");
+          if (!itemEls) return;
+          let found = false;
+          itemEls.forEach((el, i) => {
+            if (i === s.fromIndex) return;
+            const r = el.getBoundingClientRect();
+            if (e.clientY >= r.top && e.clientY <= r.bottom) {
+              const pos = e.clientY < r.top + r.height / 2 ? "before" : "after";
+              setOverIndex(i);
+              setOverPos(pos);
+              found = true;
+            }
+          });
+          if (!found) { setOverIndex(null); setOverPos(null); }
+        },
+        onPointerUp: (e) => {
+          const s = stateRef.current;
+          if (s.fromIndex === undefined || s.fromIndex === null) return;
+
+          const from = s.fromIndex;
+          stateRef.current = {};
+
+          // Compute final order
+          setOverIndex(prev => {
+            setOverPos(prevPos => {
+              if (prev !== null && prev !== from) {
+                const next = [...items];
+                const [moved] = next.splice(from, 1);
+                let insertAt = prevPos === "before" ? prev : prev + 1;
+                if (from < prev) insertAt = prevPos === "before" ? prev - 1 : prev;
+                next.splice(Math.max(0, insertAt), 0, moved);
+                onReorder(columnId, next);
+              }
+              return null;
+            });
+            return null;
+          });
+
+          setDragIndex(null);
+          setCloneStyle(null);
+        },
+        onPointerCancel: () => {
+          stateRef.current = {};
+          setDragIndex(null);
+          setOverIndex(null);
+          setOverPos(null);
+          setCloneStyle(null);
+        },
+      });
 
       if (items.length === 0) {
         return <p style={{ color:"#374151", fontSize:"12px", fontStyle:"italic", textAlign:"center", paddingTop:"12px" }}>Nothing here yet</p>;
       }
+
+      // Find the dragged item for the floating clone render
+      const draggedItem = dragIndex !== null ? items[dragIndex] : null;
+
       return (
-        <div>
+        <div ref={listRef}>
           {items.map((item, index) => {
             const showBefore = overIndex === index && overPos === "before" && dragIndex !== index;
             const showAfter  = overIndex === index && overPos === "after"  && dragIndex !== index;
             return (
-              <div key={item.id}>
+              <div key={item.id} data-sortable-item="" style={{ marginBottom:"6px" }}>
                 {showBefore && <DropIndicator color={color} />}
-                <div draggable
-                  onDragStart={e => handleDragStart(e, index)}
-                  onDragOver={e => handleDragOver(e, index)}
-                  onDragLeave={handleDragLeave}
-                  onDrop={e => handleDrop(e, index)}
-                  onDragEnd={handleDragEnd}
-                  style={{ marginBottom:"6px" }}
-                >
-                  <ItemCard item={item} color={color} columnId={columnId} columns={allColumns}
-                    isDragging={dragIndex === index}
-                    dragHandleProps={{ onMouseDown: e => e.stopPropagation() }}
-                    onDelete={(id) => onDelete(columnId, id)}
-                    onMove={(id, targetCol) => onMove(id, columnId, targetCol)}
-                  />
-                </div>
+                <ItemCard
+                  item={item} color={color} columnId={columnId} columns={allColumns}
+                  isDragging={dragIndex === index}
+                  dragHandleProps={makeHandleProps(index)}
+                  onDelete={(id) => onDelete(columnId, id)}
+                  onMove={(id, targetCol) => onMove(id, columnId, targetCol)}
+                />
                 {showAfter && <DropIndicator color={color} />}
               </div>
             );
           })}
+
+          {/* Floating drag clone rendered via portal into body */}
+          {cloneStyle && draggedItem && ReactDOM.createPortal(
+            <div style={{
+              position: "fixed",
+              left:     cloneStyle.left,
+              top:      cloneStyle.top,
+              width:    cloneStyle.width,
+              zIndex:   9999,
+              pointerEvents: "none",
+              opacity:  0.85,
+              transform: "scale(1.03)",
+              filter:   "drop-shadow(0 8px 24px rgba(0,0,0,0.5))",
+              transition: "transform 0.05s",
+            }}>
+              <ItemCard
+                item={draggedItem} color={color} columnId={columnId} columns={allColumns}
+                isDragging={true}
+                dragHandleProps={{}}
+                onDelete={() => {}}
+                onMove={() => {}}
+              />
+            </div>,
+            document.body
+          )}
         </div>
       );
     }
