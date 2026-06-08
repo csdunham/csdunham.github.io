@@ -153,7 +153,21 @@
     flex-direction: column;
     gap: 4px;
   }
-  .ring-wrap:hover .tooltip { opacity: 1; }
+  .ring-wrap:hover .tooltip,
+  .tooltip.touch-pinned { opacity: 1; }
+
+  /* Touch hint — only visible on touch-primary devices */
+  .touch-hint {
+    display: none;
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #3a3a50;
+    margin-top: -16px;
+  }
+  @media (hover: none) {
+    .touch-hint { display: block; }
+  }
 
   .tooltip .remaining {
     font-size: 2.6rem;
@@ -238,6 +252,8 @@
     </div>
   </div>
 
+  <p class="touch-hint">tap timer to show · tap again to hide</p>
+
   <div class="timer-controls">
     <button class="ctrl-btn" id="pauseBtn">Pause</button>
     <button class="ctrl-btn" id="resetBtn">Reset</button>
@@ -256,14 +272,16 @@
   const startBtn   = document.getElementById('startBtn');
   const pauseBtn   = document.getElementById('pauseBtn');
   const resetBtn   = document.getElementById('resetBtn');
+  const ringWrap   = document.getElementById('ringWrap');
+  const tooltip    = ringWrap.querySelector('.tooltip');
 
-  let totalSecs = 0;
-  let elapsed   = 0;       // seconds elapsed
-  let paused    = false;
-  let done      = false;
+  let totalSecs     = 0;
+  let elapsed       = 0;
+  let paused        = false;
+  let done          = false;
   let startAngleDeg = 0;
-  let ticker    = null;
-  let lastTick  = null;
+  let ticker        = null;
+  let lastTick      = null;
 
   // --- helpers ---
 
@@ -277,31 +295,24 @@
   }
 
   function setArc(fraction) {
-    // fraction = elapsed / total  (0 → nothing filled, 1 → full circle)
     fraction = Math.min(1, Math.max(0, fraction));
     const offset = CIRC * (1 - fraction);
     arcEl.style.strokeDasharray  = CIRC;
     arcEl.style.strokeDashoffset = offset;
-
-    // Rotate arc + dot to random start angle
     arcEl.style.transform = `rotate(${startAngleDeg}deg)`;
-
-    // Place dot at the head of the arc
     const headAngle = startAngleDeg + fraction * 360;
     dotEl.style.transform = `rotate(${headAngle}deg)`;
   }
 
   function updateRemaining() {
-    const remaining = Math.max(0, totalSecs - elapsed);
-    remainTxt.textContent = fmtTime(remaining);
+    remainTxt.textContent = fmtTime(Math.max(0, totalSecs - elapsed));
   }
 
   function tick() {
     if (paused || done) return;
     const now = performance.now();
-    const delta = (now - lastTick) / 1000;
+    elapsed += (now - lastTick) / 1000;
     lastTick = now;
-    elapsed += delta;
 
     if (elapsed >= totalSecs) {
       elapsed = totalSecs;
@@ -319,23 +330,20 @@
     updateRemaining();
   }
 
-  // --- controls ---
+  // --- launch ---
 
-  startBtn.addEventListener('click', () => {
-    const h = parseInt(document.getElementById('hoursInput').value) || 0;
-    const m = parseInt(document.getElementById('minutesInput').value) || 0;
-    totalSecs = h * 3600 + m * 60;
-    if (totalSecs <= 0) return;
-
-    elapsed = 0;
-    paused  = false;
-    done    = false;
+  function launchTimer(secs) {
+    totalSecs     = secs;
+    elapsed       = 0;
+    paused        = false;
+    done          = false;
     startAngleDeg = Math.floor(Math.random() * 360);
 
+    tooltip.classList.remove('touch-pinned');
     arcEl.classList.remove('done');
     dotEl.classList.remove('done');
     pauseBtn.classList.remove('active');
-    pauseBtn.disabled = false;
+    pauseBtn.disabled    = false;
     pauseBtn.textContent = 'Pause';
 
     setArc(0);
@@ -347,6 +355,15 @@
     lastTick = performance.now();
     clearInterval(ticker);
     ticker = setInterval(tick, 100);
+  }
+
+  // --- controls ---
+
+  startBtn.addEventListener('click', () => {
+    const h = parseInt(document.getElementById('hoursInput').value) || 0;
+    const m = parseInt(document.getElementById('minutesInput').value) || 0;
+    const secs = h * 3600 + m * 60;
+    if (secs > 0) launchTimer(secs);
   });
 
   pauseBtn.addEventListener('click', () => {
@@ -358,7 +375,7 @@
     } else {
       pauseBtn.textContent = 'Pause';
       pauseBtn.classList.remove('active');
-      lastTick = performance.now(); // reset tick baseline
+      lastTick = performance.now();
     }
   });
 
@@ -368,13 +385,45 @@
     setup.style.display     = 'flex';
   });
 
-  // Keyboard shortcut: space = pause/resume
+  // --- keyboard ---
+
   document.addEventListener('keydown', e => {
-    if (e.code === 'Space' && timerView.style.display !== 'none') {
+    const inTimer = timerView.style.display !== 'none';
+    const inSetup = setup.style.display     !== 'none';
+
+    // Space → pause/resume while timer is active
+    if (e.code === 'Space' && inTimer && !done) {
       e.preventDefault();
       pauseBtn.click();
     }
+
+    // Enter → start from setup (unless focused on a button to avoid double-fire)
+    if (e.code === 'Enter' && inSetup && e.target.tagName !== 'BUTTON') {
+      startBtn.click();
+    }
+
+    // Enter → restart same duration when timer finished
+    if (e.code === 'Enter' && inTimer && done) {
+      launchTimer(totalSecs);
+    }
   });
+
+  // --- touch: tap to toggle remaining time ---
+
+  let touchStartTime = 0;
+
+  ringWrap.addEventListener('touchstart', e => {
+    touchStartTime = Date.now();
+    e.preventDefault();           // prevent ghost clicks & scroll on the ring
+  }, { passive: false });
+
+  ringWrap.addEventListener('touchend', e => {
+    const ms = Date.now() - touchStartTime;
+    if (ms < 400) {               // short tap = toggle
+      tooltip.classList.toggle('touch-pinned');
+    }
+    e.preventDefault();
+  }, { passive: false });
 </script>
 </body>
 </html>
