@@ -190,8 +190,16 @@
   #pauseBtn.active { color: #f0c060; border-color: #5a4820; }
 
   /* Done state */
-  .arc.done { stroke: #4ad89a; filter: drop-shadow(0 0 8px rgba(74,216,154,0.6)); }
-  .arc-dot.done { fill: #4ad89a; filter: drop-shadow(0 0 6px rgba(74,216,154,0.8)); }
+  @keyframes flashArc {
+    0%, 100% { stroke: #4ad89a; filter: drop-shadow(0 0 8px rgba(74,216,154,0.6)); opacity: 1; }
+    50%       { stroke: #4ad89a; filter: drop-shadow(0 0 22px rgba(74,216,154,0.9)); opacity: 0.15; }
+  }
+  @keyframes flashDot {
+    0%, 100% { fill: #4ad89a; filter: drop-shadow(0 0 6px rgba(74,216,154,0.8)); opacity: 1; }
+    50%       { fill: #4ad89a; filter: drop-shadow(0 0 18px rgba(74,216,154,1));   opacity: 0.15; }
+  }
+  .arc.done     { animation: flashArc 0.55s ease-in-out 5; animation-fill-mode: forwards; }
+  .arc-dot.done { animation: flashDot 0.55s ease-in-out 5; animation-fill-mode: forwards; }
 </style>
 </head>
 <body>
