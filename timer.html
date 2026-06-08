@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Timer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0f0f13;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 48px;
+  }
+
+  /* --- Setup form --- */
+  #setup {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 28px;
+  }
+
+  #setup h1 {
+    font-size: 1.1rem;
+    font-weight: 400;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #888;
+  }
+
+  .inputs {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .input-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .input-group label {
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #555;
+  }
+
+  .input-group input {
+    width: 72px;
+    background: #1a1a22;
+    border: 1px solid #2e2e3e;
+    border-radius: 8px;
+    color: #e0e0e0;
+    font-size: 1.8rem;
+    font-weight: 300;
+    text-align: center;
+    padding: 10px 4px;
+    outline: none;
+    transition: border-color 0.2s;
+    -moz-appearance: textfield;
+  }
+  .input-group input::-webkit-inner-spin-button,
+  .input-group input::-webkit-outer-spin-button { -webkit-appearance: none; }
+  .input-group input:focus { border-color: #5b6af0; }
+
+  .sep {
+    font-size: 1.8rem;
+    font-weight: 200;
+    color: #444;
+    padding-bottom: 18px;
+  }
+
+  #startBtn {
+    background: #5b6af0;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 13px 36px;
+    font-size: 0.95rem;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+  }
+  #startBtn:hover { background: #717ef5; }
+  #startBtn:active { transform: scale(0.97); }
+
+  /* --- Timer view --- */
+  #timerView {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+  }
+
+  .ring-wrap {
+    position: relative;
+    width: 280px;
+    height: 280px;
+    cursor: default;
+  }
+
+  .ring-wrap svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  /* Track circle */
+  .track {
+    fill: none;
+    stroke: #1e1e2a;
+    stroke-width: 14;
+  }
+
+  /* Elapsed arc */
+  .arc {
+    fill: none;
+    stroke: #5b6af0;
+    stroke-width: 14;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.5s linear;
+    transform-origin: 140px 140px;
+    filter: drop-shadow(0 0 6px rgba(91,106,240,0.5));
+  }
+
+  /* Dot at head of arc */
+  .arc-dot {
+    fill: #8e9bf7;
+    transform-origin: 140px 140px;
+    filter: drop-shadow(0 0 4px rgba(142,155,247,0.8));
+  }
+
+  /* Tooltip */
+  .tooltip {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .ring-wrap:hover .tooltip { opacity: 1; }
+
+  .tooltip .remaining {
+    font-size: 2.6rem;
+    font-weight: 200;
+    letter-spacing: 0.02em;
+    color: #e8e8f0;
+  }
+  .tooltip .label {
+    font-size: 0.65rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #666;
+  }
+
+  /* Buttons under timer */
+  .timer-controls {
+    display: flex;
+    gap: 12px;
+  }
+
+  .ctrl-btn {
+    background: #1a1a22;
+    color: #aaa;
+    border: 1px solid #2e2e3e;
+    border-radius: 8px;
+    padding: 10px 24px;
+    font-size: 0.85rem;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+  }
+  .ctrl-btn:hover { background: #232330; color: #ddd; }
+
+  #pauseBtn.active { color: #f0c060; border-color: #5a4820; }
+
+  /* Done state */
+  .arc.done { stroke: #4ad89a; filter: drop-shadow(0 0 8px rgba(74,216,154,0.6)); }
+  .arc-dot.done { fill: #4ad89a; filter: drop-shadow(0 0 6px rgba(74,216,154,0.8)); }
+</style>
+</head>
+<body>
+
+<!-- Setup -->
+<div id="setup">
+  <h1>Set a timer</h1>
+  <div class="inputs">
+    <div class="input-group">
+      <label>Hours</label>
+      <input type="number" id="hoursInput" min="0" max="23" value="0" placeholder="0">
+    </div>
+    <div class="sep">:</div>
+    <div class="input-group">
+      <label>Minutes</label>
+      <input type="number" id="minutesInput" min="0" max="59" value="5" placeholder="5">
+    </div>
+  </div>
+  <button id="startBtn">Start</button>
+</div>
+
+<!-- Timer -->
+<div id="timerView">
+  <div class="ring-wrap" id="ringWrap">
+    <svg viewBox="0 0 280 280" xmlns="http://www.w3.org/2000/svg">
+      <!-- Track -->
+      <circle class="track" cx="140" cy="140" r="118"/>
+      <!-- Elapsed arc -->
+      <circle class="arc" id="arcEl" cx="140" cy="140" r="118"/>
+      <!-- Head dot -->
+      <circle class="arc-dot" id="dotEl" cx="258" cy="140" r="7"/>
+    </svg>
+    <div class="tooltip">
+      <span class="remaining" id="remainingText">--:--</span>
+      <span class="label">remaining</span>
+    </div>
+  </div>
+
+  <div class="timer-controls">
+    <button class="ctrl-btn" id="pauseBtn">Pause</button>
+    <button class="ctrl-btn" id="resetBtn">Reset</button>
+  </div>
+</div>
+
+<script>
+  const RADIUS = 118;
+  const CIRC = 2 * Math.PI * RADIUS;
+
+  const setup      = document.getElementById('setup');
+  const timerView  = document.getElementById('timerView');
+  const arcEl      = document.getElementById('arcEl');
+  const dotEl      = document.getElementById('dotEl');
+  const remainTxt  = document.getElementById('remainingText');
+  const startBtn   = document.getElementById('startBtn');
+  const pauseBtn   = document.getElementById('pauseBtn');
+  const resetBtn   = document.getElementById('resetBtn');
+
+  let totalSecs = 0;
+  let elapsed   = 0;       // seconds elapsed
+  let paused    = false;
+  let done      = false;
+  let startAngleDeg = 0;
+  let ticker    = null;
+  let lastTick  = null;
+
+  // --- helpers ---
+
+  function fmtTime(secs) {
+    secs = Math.max(0, Math.round(secs));
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  }
+
+  function setArc(fraction) {
+    // fraction = elapsed / total  (0 → nothing filled, 1 → full circle)
+    fraction = Math.min(1, Math.max(0, fraction));
+    const offset = CIRC * (1 - fraction);
+    arcEl.style.strokeDasharray  = CIRC;
+    arcEl.style.strokeDashoffset = offset;
+
+    // Rotate arc + dot to random start angle
+    arcEl.style.transform = `rotate(${startAngleDeg}deg)`;
+
+    // Place dot at the head of the arc
+    const headAngle = startAngleDeg + fraction * 360;
+    dotEl.style.transform = `rotate(${headAngle}deg)`;
+  }
+
+  function updateRemaining() {
+    const remaining = Math.max(0, totalSecs - elapsed);
+    remainTxt.textContent = fmtTime(remaining);
+  }
+
+  function tick() {
+    if (paused || done) return;
+    const now = performance.now();
+    const delta = (now - lastTick) / 1000;
+    lastTick = now;
+    elapsed += delta;
+
+    if (elapsed >= totalSecs) {
+      elapsed = totalSecs;
+      done = true;
+      setArc(1);
+      updateRemaining();
+      arcEl.classList.add('done');
+      dotEl.classList.add('done');
+      clearInterval(ticker);
+      pauseBtn.disabled = true;
+      return;
+    }
+
+    setArc(elapsed / totalSecs);
+    updateRemaining();
+  }
+
+  // --- controls ---
+
+  startBtn.addEventListener('click', () => {
+    const h = parseInt(document.getElementById('hoursInput').value) || 0;
+    const m = parseInt(document.getElementById('minutesInput').value) || 0;
+    totalSecs = h * 3600 + m * 60;
+    if (totalSecs <= 0) return;
+
+    elapsed = 0;
+    paused  = false;
+    done    = false;
+    startAngleDeg = Math.floor(Math.random() * 360);
+
+    arcEl.classList.remove('done');
+    dotEl.classList.remove('done');
+    pauseBtn.classList.remove('active');
+    pauseBtn.disabled = false;
+    pauseBtn.textContent = 'Pause';
+
+    setArc(0);
+    updateRemaining();
+
+    setup.style.display     = 'none';
+    timerView.style.display = 'flex';
+
+    lastTick = performance.now();
+    clearInterval(ticker);
+    ticker = setInterval(tick, 100);
+  });
+
+  pauseBtn.addEventListener('click', () => {
+    if (done) return;
+    paused = !paused;
+    if (paused) {
+      pauseBtn.textContent = 'Resume';
+      pauseBtn.classList.add('active');
+    } else {
+      pauseBtn.textContent = 'Pause';
+      pauseBtn.classList.remove('active');
+      lastTick = performance.now(); // reset tick baseline
+    }
+  });
+
+  resetBtn.addEventListener('click', () => {
+    clearInterval(ticker);
+    timerView.style.display = 'none';
+    setup.style.display     = 'flex';
+  });
+
+  // Keyboard shortcut: space = pause/resume
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space' && timerView.style.display !== 'none') {
+      e.preventDefault();
+      pauseBtn.click();
+    }
+  });
+</script>
+</body>
+</html>
