@@ -80,6 +80,32 @@
     padding-bottom: 18px;
   }
 
+  /* Mode toggle (segmented control) */
+  .mode-toggle {
+    display: flex;
+    background: #1a1a22;
+    border: 1px solid #2e2e3e;
+    border-radius: 10px;
+    padding: 3px;
+    gap: 3px;
+  }
+
+  .mode-btn {
+    background: transparent;
+    color: #555;
+    border: none;
+    border-radius: 7px;
+    padding: 8px 20px;
+    font-size: 0.82rem;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .mode-btn.active {
+    background: #2a2a3a;
+    color: #c0c0d8;
+  }
+
   #startBtn {
     background: #5b6af0;
     color: #fff;
@@ -107,6 +133,11 @@
     width: 280px;
     height: 280px;
     cursor: default;
+  }
+
+  /* On pointer devices, show click cursor to hint it's clickable */
+  @media (hover: hover) {
+    .ring-wrap { cursor: pointer; }
   }
 
   .ring-wrap svg {
@@ -140,7 +171,7 @@
     filter: drop-shadow(0 0 4px rgba(142,155,247,0.8));
   }
 
-  /* Tooltip */
+  /* Tooltip — hidden by default; shown via .pinned class (both desktop click and touch tap) */
   .tooltip {
     position: absolute;
     inset: 0;
@@ -153,34 +184,33 @@
     flex-direction: column;
     gap: 4px;
   }
-  .ring-wrap:hover .tooltip,
-  .tooltip.touch-pinned { opacity: 1; }
+  .tooltip.pinned { opacity: 1; }
 
-  /* Touch hint — only visible on touch-primary devices */
-  .touch-hint {
-    display: none;
+  .tooltip .time-display {
+    font-size: 2.6rem;
+    font-weight: 200;
+    letter-spacing: 0.02em;
+    color: #e8e8f0;
+  }
+  .tooltip .time-label {
+    font-size: 0.65rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #666;
+  }
+
+  /* Hint text — different copy for touch vs pointer devices */
+  .ring-hint {
     font-size: 0.65rem;
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: #3a3a50;
     margin-top: -16px;
   }
-  @media (hover: none) {
-    .touch-hint { display: block; }
-  }
-
-  .tooltip .remaining {
-    font-size: 2.6rem;
-    font-weight: 200;
-    letter-spacing: 0.02em;
-    color: #e8e8f0;
-  }
-  .tooltip .label {
-    font-size: 0.65rem;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: #666;
-  }
+  /* touch: always show */
+  @media (hover: none)  { .ring-hint { display: block; } }
+  /* pointer: hide (they can see the pointer cursor) */
+  @media (hover: hover) { .ring-hint { display: none; } }
 
   /* Buttons under timer */
   .timer-controls {
@@ -200,7 +230,6 @@
     transition: background 0.2s, color 0.2s;
   }
   .ctrl-btn:hover { background: #232330; color: #ddd; }
-
   #pauseBtn.active { color: #f0c060; border-color: #5a4820; }
 
   /* Done state */
@@ -232,6 +261,13 @@
       <input type="number" id="minutesInput" min="0" max="59" value="5" placeholder="5">
     </div>
   </div>
+
+  <!-- Count up / down toggle -->
+  <div class="mode-toggle">
+    <button class="mode-btn active" id="modeDownBtn">Count Down</button>
+    <button class="mode-btn"        id="modeUpBtn">Count Up</button>
+  </div>
+
   <button id="startBtn">Start</button>
 </div>
 
@@ -239,20 +275,17 @@
 <div id="timerView">
   <div class="ring-wrap" id="ringWrap">
     <svg viewBox="0 0 280 280" xmlns="http://www.w3.org/2000/svg">
-      <!-- Track -->
-      <circle class="track" cx="140" cy="140" r="118"/>
-      <!-- Elapsed arc -->
-      <circle class="arc" id="arcEl" cx="140" cy="140" r="118"/>
-      <!-- Head dot -->
+      <circle class="track"   cx="140" cy="140" r="118"/>
+      <circle class="arc"     id="arcEl" cx="140" cy="140" r="118"/>
       <circle class="arc-dot" id="dotEl" cx="258" cy="140" r="7"/>
     </svg>
-    <div class="tooltip">
-      <span class="remaining" id="remainingText">--:--</span>
-      <span class="label">remaining</span>
+    <div class="tooltip" id="tooltip">
+      <span class="time-display" id="timeDisplay">--:--</span>
+      <span class="time-label"   id="timeLabel">remaining</span>
     </div>
   </div>
 
-  <p class="touch-hint">tap timer to show · tap again to hide</p>
+  <p class="ring-hint">tap to show · tap again to hide</p>
 
   <div class="timer-controls">
     <button class="ctrl-btn" id="pauseBtn">Pause</button>
@@ -262,26 +295,44 @@
 
 <script>
   const RADIUS = 118;
-  const CIRC = 2 * Math.PI * RADIUS;
+  const CIRC   = 2 * Math.PI * RADIUS;
 
-  const setup      = document.getElementById('setup');
-  const timerView  = document.getElementById('timerView');
-  const arcEl      = document.getElementById('arcEl');
-  const dotEl      = document.getElementById('dotEl');
-  const remainTxt  = document.getElementById('remainingText');
-  const startBtn   = document.getElementById('startBtn');
-  const pauseBtn   = document.getElementById('pauseBtn');
-  const resetBtn   = document.getElementById('resetBtn');
-  const ringWrap   = document.getElementById('ringWrap');
-  const tooltip    = ringWrap.querySelector('.tooltip');
+  const setup       = document.getElementById('setup');
+  const timerView   = document.getElementById('timerView');
+  const arcEl       = document.getElementById('arcEl');
+  const dotEl       = document.getElementById('dotEl');
+  const timeDisplay = document.getElementById('timeDisplay');
+  const timeLabel   = document.getElementById('timeLabel');
+  const startBtn    = document.getElementById('startBtn');
+  const pauseBtn    = document.getElementById('pauseBtn');
+  const resetBtn    = document.getElementById('resetBtn');
+  const ringWrap    = document.getElementById('ringWrap');
+  const tooltip     = document.getElementById('tooltip');
+  const modeDownBtn = document.getElementById('modeDownBtn');
+  const modeUpBtn   = document.getElementById('modeUpBtn');
 
   let totalSecs     = 0;
   let elapsed       = 0;
   let paused        = false;
   let done          = false;
+  let countDown     = true;   // true = count down, false = count up
   let startAngleDeg = 0;
   let ticker        = null;
   let lastTick      = null;
+
+  // --- mode toggle ---
+
+  modeDownBtn.addEventListener('click', () => {
+    countDown = true;
+    modeDownBtn.classList.add('active');
+    modeUpBtn.classList.remove('active');
+  });
+
+  modeUpBtn.addEventListener('click', () => {
+    countDown = false;
+    modeUpBtn.classList.add('active');
+    modeDownBtn.classList.remove('active');
+  });
 
   // --- helpers ---
 
@@ -296,16 +347,20 @@
 
   function setArc(fraction) {
     fraction = Math.min(1, Math.max(0, fraction));
-    const offset = CIRC * (1 - fraction);
     arcEl.style.strokeDasharray  = CIRC;
-    arcEl.style.strokeDashoffset = offset;
+    arcEl.style.strokeDashoffset = CIRC * (1 - fraction);
     arcEl.style.transform = `rotate(${startAngleDeg}deg)`;
-    const headAngle = startAngleDeg + fraction * 360;
-    dotEl.style.transform = `rotate(${headAngle}deg)`;
+    dotEl.style.transform = `rotate(${startAngleDeg + fraction * 360}deg)`;
   }
 
-  function updateRemaining() {
-    remainTxt.textContent = fmtTime(Math.max(0, totalSecs - elapsed));
+  function updateDisplay() {
+    if (countDown) {
+      timeDisplay.textContent = fmtTime(totalSecs - elapsed);
+      timeLabel.textContent   = 'remaining';
+    } else {
+      timeDisplay.textContent = fmtTime(elapsed);
+      timeLabel.textContent   = 'elapsed';
+    }
   }
 
   function tick() {
@@ -316,9 +371,9 @@
 
     if (elapsed >= totalSecs) {
       elapsed = totalSecs;
-      done = true;
-      setArc(1);
-      updateRemaining();
+      done    = true;
+      setArc(countDown ? 0 : 1);
+      updateDisplay();
       arcEl.classList.add('done');
       dotEl.classList.add('done');
       clearInterval(ticker);
@@ -326,8 +381,8 @@
       return;
     }
 
-    setArc(elapsed / totalSecs);
-    updateRemaining();
+    setArc(countDown ? (totalSecs - elapsed) / totalSecs : elapsed / totalSecs);
+    updateDisplay();
   }
 
   // --- launch ---
@@ -339,15 +394,15 @@
     done          = false;
     startAngleDeg = Math.floor(Math.random() * 360);
 
-    tooltip.classList.remove('touch-pinned');
+    tooltip.classList.remove('pinned');
     arcEl.classList.remove('done');
     dotEl.classList.remove('done');
     pauseBtn.classList.remove('active');
     pauseBtn.disabled    = false;
     pauseBtn.textContent = 'Pause';
 
-    setArc(0);
-    updateRemaining();
+    setArc(countDown ? 1 : 0);
+    updateDisplay();
 
     setup.style.display     = 'none';
     timerView.style.display = 'flex';
@@ -360,8 +415,8 @@
   // --- controls ---
 
   startBtn.addEventListener('click', () => {
-    const h = parseInt(document.getElementById('hoursInput').value) || 0;
-    const m = parseInt(document.getElementById('minutesInput').value) || 0;
+    const h    = parseInt(document.getElementById('hoursInput').value)   || 0;
+    const m    = parseInt(document.getElementById('minutesInput').value) || 0;
     const secs = h * 3600 + m * 60;
     if (secs > 0) launchTimer(secs);
   });
@@ -391,39 +446,42 @@
     const inTimer = timerView.style.display !== 'none';
     const inSetup = setup.style.display     !== 'none';
 
-    // Space → pause/resume while timer is active
     if (e.code === 'Space' && inTimer && !done) {
       e.preventDefault();
       pauseBtn.click();
     }
-
-    // Enter → start from setup (unless focused on a button to avoid double-fire)
     if (e.code === 'Enter' && inSetup && e.target.tagName !== 'BUTTON') {
       startBtn.click();
     }
-
-    // Enter → restart same duration when timer finished
     if (e.code === 'Enter' && inTimer && done) {
       launchTimer(totalSecs);
     }
   });
 
-  // --- touch: tap to toggle remaining time ---
+  // --- click to toggle on pointer devices; tap to toggle on touch ---
+  // Distinguish pointer (mouse/trackpad) from touch via event type.
 
+  // Pointer devices: click toggles tooltip
+  ringWrap.addEventListener('click', e => {
+    // Only handle actual pointer clicks, not synthesized ones from touch
+    if (e.pointerType === 'touch') return;
+    tooltip.classList.toggle('pinned');
+  });
+
+  // Touch: tap (< 400ms) toggles tooltip
   let touchStartTime = 0;
 
   ringWrap.addEventListener('touchstart', e => {
     touchStartTime = Date.now();
-    e.preventDefault();           // prevent ghost clicks & scroll on the ring
+    e.preventDefault();
   }, { passive: false });
 
   ringWrap.addEventListener('touchend', e => {
-    const ms = Date.now() - touchStartTime;
-    if (ms < 400) {               // short tap = toggle
-      tooltip.classList.toggle('touch-pinned');
+    if (Date.now() - touchStartTime < 400) {
+      tooltip.classList.toggle('pinned');
     }
     e.preventDefault();
   }, { passive: false });
 </script>
 </body>
-</html>
+</html> 
