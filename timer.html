@@ -24,7 +24,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 28px;
+    gap: 24px;
   }
 
   #setup h1 {
@@ -80,8 +80,22 @@
     padding-bottom: 18px;
   }
 
-  /* Mode toggle (segmented control) */
-  .mode-toggle {
+  /* Segmented control (reused for mode + sound) */
+  .seg-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .seg-label {
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #444;
+  }
+
+  .seg-toggle {
     display: flex;
     background: #1a1a22;
     border: 1px solid #2e2e3e;
@@ -90,7 +104,7 @@
     gap: 3px;
   }
 
-  .mode-btn {
+  .seg-btn {
     background: transparent;
     color: #555;
     border: none;
@@ -101,9 +115,16 @@
     cursor: pointer;
     transition: background 0.15s, color 0.15s;
   }
-  .mode-btn.active {
+  .seg-btn.active {
     background: #2a2a3a;
     color: #c0c0d8;
+  }
+
+  /* Setup options row */
+  .setup-options {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
   }
 
   #startBtn {
@@ -135,7 +156,6 @@
     cursor: default;
   }
 
-  /* On pointer devices, show click cursor to hint it's clickable */
   @media (hover: hover) {
     .ring-wrap { cursor: pointer; }
   }
@@ -146,14 +166,12 @@
     overflow: visible;
   }
 
-  /* Track circle */
   .track {
     fill: none;
     stroke: #1e1e2a;
     stroke-width: 14;
   }
 
-  /* Elapsed arc */
   .arc {
     fill: none;
     stroke: #5b6af0;
@@ -164,14 +182,13 @@
     filter: drop-shadow(0 0 6px rgba(91,106,240,0.5));
   }
 
-  /* Dot at head of arc */
   .arc-dot {
     fill: #8e9bf7;
     transform-origin: 140px 140px;
     filter: drop-shadow(0 0 4px rgba(142,155,247,0.8));
   }
 
-  /* Tooltip — hidden by default; shown via .pinned class (both desktop click and touch tap) */
+  /* Tooltip + controls share the same pinned state */
   .tooltip {
     position: absolute;
     inset: 0;
@@ -199,7 +216,6 @@
     color: #666;
   }
 
-  /* Hint text — different copy for touch vs pointer devices */
   .ring-hint {
     font-size: 0.65rem;
     letter-spacing: 0.1em;
@@ -207,15 +223,20 @@
     color: #3a3a50;
     margin-top: -16px;
   }
-  /* touch: always show */
   @media (hover: none)  { .ring-hint { display: block; } }
-  /* pointer: hide (they can see the pointer cursor) */
   @media (hover: hover) { .ring-hint { display: none; } }
 
-  /* Buttons under timer */
+  /* Buttons: hidden until pinned, no layout shift */
   .timer-controls {
     display: flex;
     gap: 12px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .timer-controls.visible {
+    opacity: 1;
+    pointer-events: auto;
   }
 
   .ctrl-btn {
@@ -250,6 +271,7 @@
 <!-- Setup -->
 <div id="setup">
   <h1>Set a timer</h1>
+
   <div class="inputs">
     <div class="input-group">
       <label>Hours</label>
@@ -262,10 +284,22 @@
     </div>
   </div>
 
-  <!-- Count up / down toggle -->
-  <div class="mode-toggle">
-    <button class="mode-btn active" id="modeDownBtn">Count Down</button>
-    <button class="mode-btn"        id="modeUpBtn">Count Up</button>
+  <!-- Mode + Sound options side by side -->
+  <div class="setup-options">
+    <div class="seg-group">
+      <span class="seg-label">Direction</span>
+      <div class="seg-toggle">
+        <button class="seg-btn active" id="modeDownBtn">Count Down</button>
+        <button class="seg-btn"        id="modeUpBtn">Count Up</button>
+      </div>
+    </div>
+    <div class="seg-group">
+      <span class="seg-label">Sound</span>
+      <div class="seg-toggle">
+        <button class="seg-btn active" id="soundOffBtn">Off</button>
+        <button class="seg-btn"        id="soundOnBtn">On</button>
+      </div>
+    </div>
   </div>
 
   <button id="startBtn">Start</button>
@@ -287,7 +321,7 @@
 
   <p class="ring-hint">tap to show · tap again to hide</p>
 
-  <div class="timer-controls">
+  <div class="timer-controls" id="timerControls">
     <button class="ctrl-btn" id="pauseBtn">Pause</button>
     <button class="ctrl-btn" id="resetBtn">Reset</button>
   </div>
@@ -297,25 +331,29 @@
   const RADIUS = 118;
   const CIRC   = 2 * Math.PI * RADIUS;
 
-  const setup       = document.getElementById('setup');
-  const timerView   = document.getElementById('timerView');
-  const arcEl       = document.getElementById('arcEl');
-  const dotEl       = document.getElementById('dotEl');
-  const timeDisplay = document.getElementById('timeDisplay');
-  const timeLabel   = document.getElementById('timeLabel');
-  const startBtn    = document.getElementById('startBtn');
-  const pauseBtn    = document.getElementById('pauseBtn');
-  const resetBtn    = document.getElementById('resetBtn');
-  const ringWrap    = document.getElementById('ringWrap');
-  const tooltip     = document.getElementById('tooltip');
-  const modeDownBtn = document.getElementById('modeDownBtn');
-  const modeUpBtn   = document.getElementById('modeUpBtn');
+  const setup         = document.getElementById('setup');
+  const timerView     = document.getElementById('timerView');
+  const arcEl         = document.getElementById('arcEl');
+  const dotEl         = document.getElementById('dotEl');
+  const timeDisplay   = document.getElementById('timeDisplay');
+  const timeLabel     = document.getElementById('timeLabel');
+  const startBtn      = document.getElementById('startBtn');
+  const pauseBtn      = document.getElementById('pauseBtn');
+  const resetBtn      = document.getElementById('resetBtn');
+  const ringWrap      = document.getElementById('ringWrap');
+  const tooltip       = document.getElementById('tooltip');
+  const timerControls = document.getElementById('timerControls');
+  const modeDownBtn   = document.getElementById('modeDownBtn');
+  const modeUpBtn     = document.getElementById('modeUpBtn');
+  const soundOffBtn   = document.getElementById('soundOffBtn');
+  const soundOnBtn    = document.getElementById('soundOnBtn');
 
   let totalSecs     = 0;
   let elapsed       = 0;
   let paused        = false;
   let done          = false;
-  let countDown     = true;   // true = count down, false = count up
+  let countDown     = true;
+  let soundEnabled  = false;
   let startAngleDeg = 0;
   let ticker        = null;
   let lastTick      = null;
@@ -327,12 +365,60 @@
     modeDownBtn.classList.add('active');
     modeUpBtn.classList.remove('active');
   });
-
   modeUpBtn.addEventListener('click', () => {
     countDown = false;
     modeUpBtn.classList.add('active');
     modeDownBtn.classList.remove('active');
   });
+
+  // --- sound toggle ---
+
+  soundOffBtn.addEventListener('click', () => {
+    soundEnabled = false;
+    soundOffBtn.classList.add('active');
+    soundOnBtn.classList.remove('active');
+  });
+  soundOnBtn.addEventListener('click', () => {
+    soundEnabled = true;
+    soundOnBtn.classList.add('active');
+    soundOffBtn.classList.remove('active');
+  });
+
+  // --- notification sound (Web Audio API) ---
+  // Three soft ascending sine tones: E5 → G5 → B5 (pleasant major triad)
+
+  function playNotification() {
+    try {
+      const ctx   = new AudioContext();
+      const notes = [659, 784, 988]; // Hz: E5, G5, B5
+      notes.forEach((freq, i) => {
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type            = 'sine';
+        osc.frequency.value = freq;
+        const t = ctx.currentTime + i * 0.2;
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.12, t + 0.015);  // soft attack
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.55); // gentle decay
+        osc.start(t);
+        osc.stop(t + 0.55);
+      });
+    } catch (e) { /* AudioContext blocked — silently skip */ }
+  }
+
+  // --- pinned state: controls both tooltip and buttons ---
+
+  function setPinned(val) {
+    tooltip.classList.toggle('pinned', val);
+    timerControls.classList.toggle('visible', val);
+  }
+
+  function togglePinned() {
+    if (done) return;  // stay visible once timer finishes
+    setPinned(!tooltip.classList.contains('pinned'));
+  }
 
   // --- helpers ---
 
@@ -378,6 +464,8 @@
       dotEl.classList.add('done');
       clearInterval(ticker);
       pauseBtn.disabled = true;
+      setPinned(true);                        // reveal time + buttons on completion
+      if (soundEnabled) playNotification();
       return;
     }
 
@@ -394,7 +482,7 @@
     done          = false;
     startAngleDeg = Math.floor(Math.random() * 360);
 
-    tooltip.classList.remove('pinned');
+    setPinned(false);
     arcEl.classList.remove('done');
     dotEl.classList.remove('done');
     pauseBtn.classList.remove('active');
@@ -458,17 +546,18 @@
     }
   });
 
-  // --- click to toggle on pointer devices; tap to toggle on touch ---
-  // Distinguish pointer (mouse/trackpad) from touch via event type.
+  // --- click / tap to toggle (or restart when done) ---
 
-  // Pointer devices: click toggles tooltip
-  ringWrap.addEventListener('click', e => {
-    // Only handle actual pointer clicks, not synthesized ones from touch
-    if (e.pointerType === 'touch') return;
-    tooltip.classList.toggle('pinned');
+  // Pointer devices: any click in the window restarts when done;
+  // otherwise clicking the ring toggles the pinned state.
+  document.addEventListener('click', e => {
+    const inTimer = timerView.style.display !== 'none';
+    if (!inTimer) return;
+    if (e.target.closest('button')) return;  // let buttons work normally
+    if (done) { launchTimer(totalSecs); return; }
+    if (e.target.closest('#ringWrap') && e.pointerType !== 'touch') togglePinned();
   });
 
-  // Touch: tap (< 400ms) toggles tooltip
   let touchStartTime = 0;
 
   ringWrap.addEventListener('touchstart', e => {
@@ -478,10 +567,11 @@
 
   ringWrap.addEventListener('touchend', e => {
     if (Date.now() - touchStartTime < 400) {
-      tooltip.classList.toggle('pinned');
+      if (done) launchTimer(totalSecs);
+      else togglePinned();
     }
     e.preventDefault();
   }, { passive: false });
 </script>
 </body>
-</html> 
+</html>
